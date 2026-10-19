@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  serverExternalPackages: ['@electric-sql/pglite', 'pg'],
 }
 
 export default nextConfig
