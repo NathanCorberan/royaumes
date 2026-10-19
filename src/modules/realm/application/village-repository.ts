@@ -1,14 +1,22 @@
 import type { VillageEvent, VillageState } from '../domain/village'
 
-/** Port de persistance : le cœur ignore la technique de stockage. */
+/**
+ * Port de persistance du Village, défini par la couche application.
+ * Il est exprimé dans les termes du domaine (états, événements) et ignore
+ * tout du stockage concret, fourni par un adaptateur de l'infrastructure.
+ */
 export interface VillageRepository {
+  /**
+   * Charge l'état du village d'un joueur, reconstruit à partir de ses événements,
+   * ainsi que sa version : le nombre d'événements déjà enregistrés.
+   */
   load(userId: string): Promise<{ state: VillageState; version: number }>
-  save(userId: string, expectedVersion: number, events: VillageEvent[]): Promise<void>
-}
 
-export class VersionConflictError extends Error {
-  constructor(userId: string, expected: number, actual: number) {
-    super(`Conflit de version pour ${userId} : attendue ${expected}, enregistrée ${actual}`)
-    this.name = 'VersionConflictError'
-  }
+  /**
+   * Enregistre de nouveaux événements à la suite des précédents.
+   * expectedVersion est la version lue au chargement : si d'autres événements
+   * ont été enregistrés entre-temps, l'enregistrement est refusé par une
+   * ConcurrencyError, l'erreur du journal d'événements de la plateforme.
+   */
+  save(userId: string, expectedVersion: number, events: VillageEvent[]): Promise<void>
 }
