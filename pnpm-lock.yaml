@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
       next:
         specifier: 16.4.0
         version: 16.4.0(@types/node@22.20.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -469,6 +472,10 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+    engines: {node: '>=16.9.0'}
 
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
@@ -941,6 +948,8 @@ snapshots:
       tapable: 2.3.3
 
   graceful-fs@4.2.11: {}
+
+  hono@4.13.13: {}
 
   jiti@2.7.0: {}
 
