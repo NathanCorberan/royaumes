@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint:archi": "depcruise src app --config .dependency-cruiser.cjs"
+    "lint:archi": "depcruise src app --config .dependency-cruiser.cjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm lint:archi && pnpm test"
   },
   "dependencies": {
     "hono": "4.13.13",
