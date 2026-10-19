@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { HealthStatus } from '@/modules/system/ui'
 
 /**
@@ -11,6 +12,9 @@ export default function Home() {
       <h1>Royaumes</h1>
       <p className="muted">Le socle du projet est en place.</p>
       <HealthStatus />
+      <p>
+        <Link href="/village">Accéder au village</Link>
+      </p>
     </>
   )
 }
