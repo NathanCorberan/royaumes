@@ -1,18 +1,26 @@
 import { Hono } from 'hono'
+import { createRealmModule } from '@/modules/realm'
 import { createSystemModule } from '@/modules/system'
+import { demoUser } from '@/platform/http/demo-user'
+import type { AppEnv } from '@/platform/http/types'
 
 /**
  * Racine de composition : le seul endroit du projet qui connaît à la fois
  * la plateforme technique et l'ensemble des modules.
  * Ajouter un module consiste à l'instancier ici, puis à monter son API.
  */
-export function createApi() {
+export interface ApiDeps {
+  clock?: () => number
+}
+
+export function createApi({ clock }: ApiDeps = {}) {
   // 1. Instanciation des modules. Leurs dépendances (base de données,
   //    journal d'événements, authentification) leur seront fournies ici.
   const system = createSystemModule()
+  const realm = createRealmModule({ clock })
 
   // 2. Application principale : toutes ses routes sont préfixées par /api.
-  const app = new Hono().basePath('/api')
+  const app = new Hono<AppEnv>().basePath('/api')
 
   // 3. Toute erreur non prévue produit une réponse JSON uniforme,
   //    sans divulguer de détail technique au client.
@@ -26,7 +34,8 @@ export function createApi() {
 
   // 4. Montage des sous-applications : chaque module reçoit son propre préfixe.
   //    Les appels sont chaînés afin que TypeScript conserve le type de chaque route.
-  return app.route('/system', system.api)
+  app.use('/realm/*', demoUser())
+  return app.route('/system', system.api).route('/realm', realm.api)
 }
 
 /** Type de l'application complète, déduit de ses routes. */
