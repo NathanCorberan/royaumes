@@ -5,7 +5,8 @@ export const DEMO_USER_ID = 'demo'
 
 /**
  * Middleware provisoire : toutes les requêtes sont attribuées au même joueur.
- * DETTE TECHNIQUE : à remplacer au TD4 par l'identification du joueur connecté.
+ * DETTE TECHNIQUE DT-001 (docs/qualite/dette-technique.md) : à remplacer au TD4
+ * par un middleware qui identifie le joueur connecté.
  */
 export const demoUser = () =>
   createMiddleware<AppEnv>(async (c, next) => {

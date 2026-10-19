@@ -16,6 +16,8 @@ export function createVillageService(repo: VillageRepository, clock = () => Date
     const now = clock()
     const decision = decide(state, command, now)
     if (!decision.ok) return decision
+    // DETTE TECHNIQUE DT-003 (docs/qualite/dette-technique.md) : un conflit de version
+    // lève une exception non traitée ; il sera rejoué au TD3.
     await repo.save(userId, version, decision.events)
     const updated = await repo.load(userId)
     return { ok: true, view: toView(updated.state, now) }
