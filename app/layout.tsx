@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import "./globals.css";
+import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
+import './globals.css'
 
 export const metadata: Metadata = {
-  title: "Royaumes",
-  description: "Jeu multijoueur - monolithe modulaire",
-};
+  title: 'Royaumes',
+  description: 'Jeu multijoueur - monolithe modulaire',
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -14,5 +14,5 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <main>{children}</main>
       </body>
     </html>
-  );
+  )
 }

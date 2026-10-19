@@ -6,11 +6,11 @@ import { HealthStatus } from '@/modules/system/ui'
  * seront en place.
  */
 export default function Home() {
-    return (
-        <>
-            <h1>Royaumes</h1>
-            <p className="muted">Le socle du projet est en place.</p>
-            <HealthStatus />
-        </>
-    )
+  return (
+    <>
+      <h1>Royaumes</h1>
+      <p className="muted">Le socle du projet est en place.</p>
+      <HealthStatus />
+    </>
+  )
 }

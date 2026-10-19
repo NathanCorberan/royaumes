@@ -2,7 +2,7 @@ import { type Api, createApi } from './create-api'
 
 /** Ce que l'application expose à Next.js : pour l'instant, la seule API. */
 interface Server {
-    api: Api
+  api: Api
 }
 
 /**
@@ -19,8 +19,8 @@ const globalForServer = globalThis as unknown as { royaumes?: Server }
  * ne s'exécute lorsque Next.js analyse les fichiers pendant la construction.
  */
 export function getServer(): Server {
-    if (!globalForServer.royaumes) {
-        globalForServer.royaumes = { api: createApi() }
-    }
-    return globalForServer.royaumes
+  if (!globalForServer.royaumes) {
+    globalForServer.royaumes = { api: createApi() }
+  }
+  return globalForServer.royaumes
 }
