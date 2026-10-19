@@ -25,6 +25,13 @@ module.exports = {
       to: { pathNot: '^src/modules/$1/domain/' },
     },
     {
+      name: 'application-ignores-infrastructure',
+      comment: "La couche application d'un module n'importe jamais son infrastructure.",
+      severity: 'error',
+      from: { path: '^src/modules/([^/]+)/application/' },
+      to: { path: '^src/modules/$1/infrastructure/' },
+    },
+    {
       name: 'platform-ignores-modules',
       comment: 'La plateforme ignore les modules métier et la racine de composition.',
       severity: 'error',
