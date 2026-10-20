@@ -6,7 +6,14 @@ import { easyStrategy, hardStrategy, type TargetingContext } from './monster-str
 import { seeded } from './random'
 import { resolveRound } from './rules'
 
-const hero = (id: string, hp: number): Hero => ({ id, name: id, hp, maxHp: 30, attack: 6 })
+const hero = (id: string, hp: number): Hero => ({
+  id,
+  name: id,
+  hp,
+  maxHp: 30,
+  attack: 6,
+  companion: false,
+})
 const troll: Monster = { id: 'm0', kind: 'troll', hp: 40, maxHp: 40, attack: 7 }
 
 /** Situation d'attaque du troll, dont les dégâts minimaux sont de 6 (3 contre un héros qui se défend). */
