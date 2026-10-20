@@ -1,6 +1,7 @@
 'use client'
 import { hc } from 'hono/client'
 import { useCallback, useEffect, useState } from 'react'
+import { useChannel } from '@/platform/realtime/use-channel'
 import { Entity } from '@/ui/entity'
 import type { RealmApi } from './api'
 import {
@@ -11,10 +12,16 @@ import {
   type Stock,
   stockAt,
   type VillageView,
+  villageChannel,
 } from './contracts'
 
+/** Client HTTP typé, déduit de la sous-application Hono du module. */
 const client = hc<RealmApi>('/api/realm')
+
+/** Erreurs que l'API peut renvoyer : erreurs métier et erreur de validation. */
 type ApiError = { code: DomainError['code'] | 'INVALID_INPUT'; message?: string }
+
+/** Message affiché au joueur pour chaque erreur. */
 const ERRORS: Record<ApiError['code'], string> = {
   INVALID_INPUT: 'Saisie invalide.',
   ALREADY_FOUNDED: 'Village déjà fondé.',
@@ -22,91 +29,80 @@ const ERRORS: Record<ApiError['code'], string> = {
   MAX_LEVEL_REACHED: 'Niveau maximum atteint.',
   INSUFFICIENT_RESOURCES: 'Ressources insuffisantes.',
 }
+
+/** Indique si le stock couvre un coût ; faux si le coût est absent (niveau maximal). */
 function canAfford(stock: Stock, cost: Partial<Stock> | null) {
   return !!cost && Object.entries(cost).every(([r, n]) => stock[r as keyof Stock] >= (n ?? 0))
 }
 
-/** Fondation et améliorations ; la production affichée est extrapolée localement. */
-export function VillageScreen() {
+/** Libellé affiché pour chaque état de la connexion temps réel. */
+const STATUS_LABELS = {
+  connecting: 'Connexion...',
+  open: 'Temps réel connecté',
+  reconnecting: 'Reconnexion...',
+} as const
+
+/** Écran du Village : fondation, stock et bâtiments, mis à jour en temps réel. */
+export function VillageScreen({ userId }: { userId: string }) {
+  // undefined : chargement en cours ; null : aucun village fondé.
   const [view, setView] = useState<VillageView | null | undefined>(undefined)
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
 
+  // REQUÊTE : lecture de la vue du village.
   const refresh = useCallback(async () => {
-    try {
-      const res = await client.village.$get()
-      if (!res.ok) throw new Error('HTTP')
-      setView((await res.json()).view)
-      setError(null)
-    } catch {
-      setError('Impossible de charger le village. Réessayez.')
-    }
+    const res = await client.village.$get()
+    if (res.ok) setView((await res.json()).view)
   }, [])
 
   useEffect(() => {
-    void refresh()
+    refresh()
   }, [refresh])
+
+  // TEMPS RÉEL : chaque événement du village, y compris s'il provient d'un autre onglet
+  // ou d'un autre appareil, provoque une relecture de la vue.
+  const status = useChannel(villageChannel(userId), refresh)
+
+  // Le stock est extrapolé localement deux fois par seconde, sans interroger le serveur.
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500)
     return () => clearInterval(timer)
   }, [])
 
+  // COMMANDES : chaque réponse contient la vue à jour, ou une erreur.
+  async function found(name: string) {
+    const res = await client.village.$post({ json: { name } })
+    handle(await res.json())
+  }
+  async function upgrade(building: Building) {
+    const res = await client.village.upgrade.$post({ json: { building } })
+    handle(await res.json())
+  }
   function handle(body: { view: VillageView } | { error: ApiError }) {
     if ('error' in body) {
-      setError(body.error.message ?? ERRORS[body.error.code] ?? 'Une erreur est survenue.')
+      setError(ERRORS[body.error.code])
     } else {
       setError(null)
       setView(body.view)
-      setNow(Date.now())
-    }
-  }
-  async function found(name: string) {
-    setPending(true)
-    try {
-      const res = await client.village.$post({ json: { name } })
-      handle(await res.json())
-    } catch {
-      setError('Impossible de joindre le serveur.')
-    } finally {
-      setPending(false)
-    }
-  }
-  async function upgrade(building: Building) {
-    setPending(true)
-    try {
-      const res = await client.village.upgrade.$post({ json: { building } })
-      handle(await res.json())
-    } catch {
-      setError('Impossible de joindre le serveur.')
-    } finally {
-      setPending(false)
     }
   }
 
   const title = (
-    <h1>
-      <Entity kind="village" /> {view?.name ?? 'Royaumes'}
-    </h1>
+    <div className="row" style={{ justifyContent: 'space-between' }}>
+      <h1>
+        <Entity kind="village" /> {view?.name ?? 'Royaumes'}
+      </h1>
+      <span className="status" data-status={status}>
+        {STATUS_LABELS[status]}
+      </span>
+    </div>
   )
-  if (view === undefined)
-    return (
-      <>
-        {title}
-        {error && (
-          <div className="panel">
-            <p className="error" role="alert">
-              {error}
-            </p>
-            <button type="button" onClick={() => void refresh()}>
-              Réessayer
-            </button>
-          </div>
-        )}
-      </>
-    )
 
-  if (view === null)
+  // Chargement en cours.
+  if (view === undefined) return title
+
+  // Aucun village : formulaire de fondation.
+  if (view === null) {
     return (
       <>
         {title}
@@ -114,24 +110,20 @@ export function VillageScreen() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              void found(String(new FormData(e.currentTarget).get('name')))
+              found(String(new FormData(e.currentTarget).get('name')))
             }}
           >
             <label htmlFor="name">Nommez votre village</label>
             <input id="name" name="name" required minLength={2} maxLength={30} />
-            <button type="submit" disabled={pending}>
-              Fonder
-            </button>
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
+            <button type="submit">Fonder</button>
+            {error && <p className="error">{error}</p>}
           </form>
         </div>
       </>
     )
+  }
 
+  // Village fondé : stock extrapolé à l'instant courant, puis bâtiments.
   const stock = stockAt(view, now)
   return (
     <>
@@ -159,22 +151,14 @@ export function VillageScreen() {
                       <Entity kind={r} /> {n}
                     </span>
                   ))}
-                <button
-                  type="button"
-                  disabled={pending || !canAfford(stock, cost)}
-                  onClick={() => void upgrade(b)}
-                >
+                <button type="button" disabled={!canAfford(stock, cost)} onClick={() => upgrade(b)}>
                   {view.levels[b] === 0 ? 'Construire' : 'Améliorer'}
                 </button>
               </span>
             </div>
           )
         })}
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <p className="error">{error}</p>}
       </section>
     </>
   )
