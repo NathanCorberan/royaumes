@@ -36,6 +36,13 @@
       "when": 1792505700922,
       "tag": "0004_version_projections",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792506529424,
+      "tag": "0005_meilleur_butin",
+      "breakpoints": true
     }
   ]
 }
