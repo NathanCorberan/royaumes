@@ -11,5 +11,11 @@ export const theme: Record<string, Look> = {
   sawmill: { glyph: '🪚', label: 'Scierie' },
   quarry: { glyph: '⛏️', label: 'Carrière' },
   mine: { glyph: '⚒️', label: 'Mine' },
+  dungeon: { glyph: '⚔️', label: 'Donjon' },
+  hero: { glyph: '🛡️', label: 'Héros' },
+  goblin: { glyph: '👺', label: 'Gobelin' },
+  skeleton: { glyph: '💀', label: 'Squelette' },
+  troll: { glyph: '👹', label: 'Troll' },
+  door: { glyph: '🚪', label: 'Porte' },
 }
 export const look = (kind: string): Look => theme[kind] ?? { glyph: '?', label: kind }
