@@ -16,6 +16,8 @@
 | D8 | L'échéance d'une manche est appréciée par l'horloge du serveur | Commande d'échéance envoyée avant l'échéance | En combat, la commande `POST /deadline` envoyée avant la fin du compte à rebours a renvoyé la vue avec la manche toujours à 1. Le serveur n'a donc pas résolu ni enregistré la manche avant son échéance. | conforme |
 | D9 | Une action destinée à une manche déjà résolue est refusée | Test « refuse un choix pour une manche déjà résolue » | Le test soumet une action pour la manche 1 après son échéance et vérifie le refus `ROUND_OVER` avec la manche courante 2. | conforme |
 | D10 | Connaître l'adresse d'une expédition ne permet pas d'y agir sans en être membre | Action envoyée par un joueur qui n'est pas membre | Depuis un compte non-membre, l'action renvoie 403 `NOT_A_MEMBER`. La consultation de cette même adresse reste possible (200, `isMember: false`) : c'est volontaire pour permettre de rejoindre une expédition par son adresse ; la vue consultée ne contient que des informations publiques et l'identifiant est un UUID généré aléatoirement, donc non devinable. Ce risque de consultation par adresse est accepté. | risque accepté |
+| D11 | Aucun joueur ne peut agir au nom d'un compagnon ni écouter le canal en son nom | Test « présente le compagnon comme prêt, et ne le compte pas parmi les membres » ; fonction `isMember` de `rules.ts` | | |
+| D12 | L'intelligence artificielle ne transmet aux joueurs aucune information qu'ils n'auraient pas autrement | Lecture de `companion.ts` et `monster-strategies.ts` ; vue filtrée inchangée | | |
 
 ## Synthèse
 
