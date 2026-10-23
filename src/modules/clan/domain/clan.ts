@@ -59,6 +59,8 @@ export type ClanError =
   | { code: 'NOT_ALLOWED' }
   | { code: 'NOT_A_MEMBER' }
   | { code: 'LEADER_MUST_TRANSFER' }
+  | { code: 'CLAN_NOT_FOUND' }
+  | { code: 'REQUEST_NOT_FOUND' }
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; error: ClanError }
 

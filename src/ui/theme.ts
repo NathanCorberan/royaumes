@@ -21,5 +21,6 @@ export const theme: Record<string, Look> = {
   ranking: { glyph: '🏆', label: 'Classement' },
   market: { glyph: '⚖️', label: 'Marché' },
   tavern: { glyph: '🍺', label: 'Taverne' },
+  clan: { glyph: '⚜️', label: 'Clan' },
 }
 export const look = (kind: string): Look => theme[kind] ?? { glyph: '?', label: kind }
