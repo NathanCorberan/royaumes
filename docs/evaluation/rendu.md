@@ -2,7 +2,7 @@
 
 - Auteur : Nathan Corberan
 - Module : `clan`
-- Adresse du déploiement : ADRESSE_DU_DEPLOIEMENT
+- Adresse du déploiement : https://royaumes-swart.vercel.app
 - Fiche de cadrage : [fiche-cadrage.md](fiche-cadrage.md)
 
 ## Exigences minimales
