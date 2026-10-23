@@ -201,6 +201,7 @@ sans la première ; sans la seconde, la route des tâches quotidiennes reste fer
 - [Revue de sécurité de l'authentification](docs/qualite/revue-securite-authentification.md)
 - [Revue de sécurité du Donjon](docs/qualite/revue-securite-donjon.md)
 - [Revue de sécurité du Marché](docs/qualite/revue-securite-marche.md)
+- [Revue de sécurité du Clan](docs/qualite/revue-securite-clan.md)
 - [Registre des traitements](docs/rgpd/registre-traitements.md)
 - [Revue de conformité au RGPD](docs/rgpd/revue-conformite.md)
 - [Bilan technique](docs/bilan-technique.md)
@@ -238,7 +239,7 @@ Le service Village extrait n'est pas prêt pour la production : ses migrations, 
 de son flux publié et la distribution de sa boîte d'envoi restent à traiter. Ces limites, et
 les autres limites connues, sont recensées dans le registre de la dette technique.
 
-Le plafond de vingt membres d'un clan n'est vérifié que par le code : deux acceptations
-simultanées peuvent le dépasser d'un membre (ADR 0010). Un membre exclu continue de recevoir
-les messages du chat jusqu'à la fermeture de son flux, au plus quatre minutes. Un don reste
-« en attente » tant que la boîte d'envoi n'a pas été distribuée (ADR 0011).
+Un membre exclu d'un clan continue de recevoir les messages du chat jusqu'à la fermeture de
+son flux, au plus quatre minutes. Un don reste « en attente » tant que la boîte d'envoi n'a pas
+été distribuée (ADR 0011). Les dons et les distributions du trésor n'ont pas de durée de
+conservation : ils ne sont supprimés qu'avec le compte du joueur.

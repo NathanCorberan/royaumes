@@ -16,8 +16,9 @@
   aux seuls champs de nom (ADR-0008).
 - Aucun autre module ne lit les données du Clan : elles n'ont pas de valeur pour le
   Classement ni pour les autres projections.
-- Deux règles de la fiche de cadrage doivent tenir même en cas de requêtes simultanées : un
-  joueur appartient à au plus un clan, et le solde du trésor ne devient jamais négatif.
+- Trois règles de la fiche de cadrage doivent tenir même en cas de requêtes simultanées : un
+  joueur appartient à au plus un clan, un clan compte au plus vingt membres, et le solde du
+  trésor ne devient jamais négatif.
 
 ## Décision
 
@@ -29,7 +30,9 @@
 - Les règles qui doivent résister aux requêtes simultanées sont aussi garanties par la base :
   la clé primaire de `members` est le joueur, le nom et le tag d'un clan sont uniques, et le
   débit du trésor est une seule instruction conditionnée par le solde
-  (`treasury >= montant`).
+  (`treasury >= montant`). L'acceptation d'une demande verrouille la ligne du clan
+  (`FOR UPDATE`) avant d'en compter les membres : une acceptation simultanée attend la
+  première, et compte le membre qu'elle vient d'ajouter.
 - La dissolution d'un clan supprime en cascade ses membres, ses demandes et ses messages.
   Les dons ne sont pas reliés au clan par une clé étrangère : un don en attente survit à la
   dissolution, le temps d'être remboursé (ADR-0011).
@@ -42,9 +45,9 @@
 
 - L'effacement d'un compte est une suppression de lignes, sans réécriture du journal ;
   le module n'ajoute aucune exception à l'ajout seul du journal.
-- La règle « un seul clan par joueur » et le solde positif du trésor sont garantis par la
-  base, et non seulement par le code : deux acceptations ou deux distributions simultanées
-  ne peuvent pas les enfreindre.
+- La règle « un seul clan par joueur », le plafond de vingt membres et le solde positif du
+  trésor sont garantis par la base, et non seulement par le code : deux acceptations ou deux
+  distributions simultanées ne peuvent pas les enfreindre.
 - Le module est plus simple qu'un module fondé sur des événements : ni versions, ni
   concurrence optimiste, ni projection pour lire l'état d'un clan.
 - La Taverne avait déjà retenu ce modèle (ADR-0008) : le Clan en reprend les adaptateurs,
@@ -54,8 +57,6 @@
 
 - L'historique d'un clan n'est pas conservé : on ne peut pas savoir qui en était membre
   hier, ni reconstruire le trésor à partir de ses mouvements.
-- Le plafond de vingt membres n'est vérifié que par le code : deux acceptations simultanées
-  dans un clan de dix-neuf membres pourraient le dépasser d'un membre.
 - Les tables `donations` et `distributions` grandissent avec chaque mouvement du trésor ;
   seul l'effacement d'un compte en supprime des lignes.
 - Un futur module qui voudrait réagir à la vie des clans (une quête de clan, un classement)

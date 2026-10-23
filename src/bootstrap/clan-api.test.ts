@@ -114,6 +114,22 @@ describe('API du module Clan', () => {
     expect((await me(api, 'bob')).requests).toEqual([])
   })
 
+  it('ne dépasse pas 20 membres, même si deux demandes sont acceptées en même temps', async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    for (let i = 1; i < 19; i++) await join(api, clan.id, `joueur-${i}`)
+    const ids: string[] = []
+    for (const player of ['bob', 'carol']) {
+      const res = await api.post(`/api/clan/clans/${clan.id}/requests`, {}, player)
+      ids.push(((await res.json()) as { request: JoinRequestView }).request.id)
+    }
+    const statuses = await Promise.all(
+      ids.map(async (id) => (await api.post(`/api/clan/requests/${id}/accept`, {})).status),
+    )
+    expect(statuses.sort()).toEqual([200, 409])
+    expect((await me(api)).clan?.members).toHaveLength(20)
+  })
+
   it('refuse une demande (204), et refuse une demande adressée à un autre clan (404)', async () => {
     const api = await createTestApi()
     const clan = await found(api)
@@ -146,6 +162,17 @@ describe('API du module Clan', () => {
     expect((await api.post('/api/clan/members/bob/demote', {})).status).toBe(200)
     expect(await roles(api)).toMatchObject({ bob: 'member' })
     expect((await api.post('/api/clan/members/zoe/promote', {})).status).toBe(404)
+  })
+
+  it("n'agit sur aucun membre d'un autre clan (404)", async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    await join(api, clan.id, 'bob')
+    await found(api, 'Les Ours', 'OURS', 'dave')
+    for (const action of ['promote', 'demote', 'transfer-leadership', 'kick']) {
+      expect((await api.post(`/api/clan/members/bob/${action}`, {}, 'dave')).status).toBe(404)
+    }
+    expect(await roles(api)).toEqual({ alice: 'leader', bob: 'member' })
   })
 
   it('le chef transmet son rôle, et devient officier', async () => {
@@ -415,6 +442,20 @@ describe('API du module Clan - le trésor', () => {
     expect((await distribute('alice', 10, 'bob')).status).toBe(403)
     expect((await distribute('zoe', 10)).status).toBe(404)
     expect((await me(api)).clan?.treasury).toBe(100)
+  })
+
+  it('ne rend jamais le trésor négatif, même lors de deux distributions simultanées', async () => {
+    const { api } = await clanWithGold()
+    await donate(api, 100)
+    const statuses = await Promise.all(
+      [70, 70].map(
+        async (amount) =>
+          (await api.post('/api/clan/treasury/distributions', { playerId: 'bob', amount })).status,
+      ),
+    )
+    expect(statuses.sort()).toEqual([201, 409])
+    expect((await me(api)).clan?.treasury).toBe(30)
+    expect(await goldOf(api, 'bob')).toBe(570)
   })
 })
 
