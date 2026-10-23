@@ -92,6 +92,13 @@
       "when": 1792583295133,
       "tag": "0012_limitation_partagee",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792594206811,
+      "tag": "0013_clan",
+      "breakpoints": true
     }
   ]
 }
