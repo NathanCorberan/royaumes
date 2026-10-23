@@ -317,7 +317,8 @@ describe('API du module Clan - le chat', () => {
     await api.post(`/api/clan/clans/${clan.id}/requests`, {}, 'bob')
     const afterRequest = (await revisions()).events
     expect(afterRequest).toMatchObject([{ position: 1, type: 'ClanChanged', data: {} }])
-    await api.post('/api/clan/requests/' + (await me(api, 'bob')).requests[0].id + '/accept', {})
+    const [request] = (await me(api, 'bob')).requests
+    await api.post(`/api/clan/requests/${request.id}/accept`, {})
     const afterAccept = (await revisions()).events[0].position
     expect(afterAccept).toBeGreaterThan(1)
     await api.post('/api/clan/members/bob/promote', {})
