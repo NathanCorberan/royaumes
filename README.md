@@ -81,6 +81,7 @@ Un module n'est accessible depuis l'extérieur que par ses entrées publiques : 
 | `ranking` | Classement des joueurs, construit à partir des événements du Village et du Donjon | `/api/ranking` |
 | `market` | Marché : échanges de ressources entre joueurs, par une saga orchestrée | `/api/market` |
 | `tavern` | Taverne : salon de discussion commun et présence des joueurs, sans Event Sourcing | `/api/tavern` |
+| `clan` | Clan : fondation et gestion des clans (rôles, demandes d'adhésion, exclusion), chat réservé aux membres, trésor commun alimenté par une saga avec le Village, sans Event Sourcing | `/api/clan` |
 
 ## Temps réel
 
@@ -95,7 +96,9 @@ modifient le classement ou la liste des offres, et ne transmettent que ceux qui 
 enregistrés après leur ouverture.
 
 Le canal `tavern` ne lit pas le journal, mais la table des messages de la Taverne : il
-transmet chaque nouveau message, avec son contenu, à tous les joueurs connectés.
+transmet chaque nouveau message, avec son contenu, à tous les joueurs connectés. De même,
+le canal `clan-<clan>` lit la table des messages du Clan, filtrée sur ce clan : il transmet
+chaque nouveau message du chat, avec son contenu, aux seuls membres du clan.
 
 Les canaux du Donjon, du Classement et du Marché sont discrets : ils ne transmettent que la position,
 le type et la version des événements, et chaque navigateur relit sa propre vue, filtrée
@@ -115,6 +118,13 @@ chaque consultation du Marché, et chaque jour par la tâche planifiée `/api/cr
 est garantie au moins une fois : les gestionnaires de messages sont idempotents. Un message qui
 échoue dix fois est abandonné : la tâche quotidienne le signale, et le script
 `scripts/dead-letters.ts` permet de l'examiner, puis de le relancer une fois sa cause corrigée.
+
+Le trésor du Clan suit le même modèle (ADR 0011) : un don prélève l'or dans le village du
+donateur par un message `realm.withdraw`, puis le crédite au trésor ; si le clan a été dissous
+entre-temps, l'or est reversé au donateur. Une distribution du chef verse l'or au village d'un
+membre par un message `realm.deposit`. Le Clan n'enregistrant pas d'événements, ses messages
+sont confiés à la boîte d'envoi par la fonction `enqueue`, dans la transaction de ses tables.
+Les messages sont distribués après chaque don et chaque distribution.
 
 ## Service Village extrait
 
@@ -141,8 +151,12 @@ page « Mes données » :
   d'événements (ADR 0008). Chaque effacement est consigné dans `platform.erasures`.
 
 Les messages de la Taverne sont conservés trente jours, et la présence d'un joueur deux
-minutes après son dernier signal. Ces durées sont appliquées à chaque lecture, et chaque jour
-par la tâche planifiée `/api/cron/daily`.
+minutes après son dernier signal. Les messages du chat d'un clan sont conservés trente jours,
+et une demande d'adhésion sans réponse sept jours. Ces durées sont appliquées à chaque
+lecture, et chaque jour par la tâche planifiée `/api/cron/daily`.
+
+L'effacement du compte d'un chef de clan transmet son rôle à l'officier le plus ancien, ou à
+défaut au membre le plus ancien ; s'il était le dernier membre, le clan est dissous.
 
 ## Base de données
 
@@ -223,3 +237,8 @@ pseudonymisée : plus aucune table ne le relie à une personne (ADR 0008).
 Le service Village extrait n'est pas prêt pour la production : ses migrations, la pagination
 de son flux publié et la distribution de sa boîte d'envoi restent à traiter. Ces limites, et
 les autres limites connues, sont recensées dans le registre de la dette technique.
+
+Le plafond de vingt membres d'un clan n'est vérifié que par le code : deux acceptations
+simultanées peuvent le dépasser d'un membre (ADR 0010). Un membre exclu continue de recevoir
+les messages du chat jusqu'à la fermeture de son flux, au plus quatre minutes. Un don reste
+« en attente » tant que la boîte d'envoi n'a pas été distribuée (ADR 0011).

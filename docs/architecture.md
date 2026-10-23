@@ -12,7 +12,7 @@ dans le même commit que la modification qu'ils décrivent.
 ```mermaid
 flowchart TB
   joueur["Joueur<br/>[Personne]<br/>Joue depuis un navigateur,<br/>sur ordinateur ou sur téléphone"]
-  royaumes["Royaumes<br/>[Système logiciel]<br/>Jeu web multijoueur : village, donjon,<br/>classement, marché et taverne"]
+  royaumes["Royaumes<br/>[Système logiciel]<br/>Jeu web multijoueur : village, donjon,<br/>classement, marché, taverne et clans"]
   joueur -->|"Gère son village, joue avec les autres joueurs,<br/>reçoit les changements en direct (HTTPS)"| royaumes
 ```
 
@@ -28,7 +28,7 @@ flowchart TB
   subgraph royaumes["Système Royaumes"]
     web["Interface web<br/>[Conteneur : React, dans le navigateur]<br/>Pages du jeu et page de connexion"]
     serveur["Application serveur<br/>[Conteneur : Next.js et Hono, fonctions Vercel, Francfort]<br/>Rendu des pages, API JSON,<br/>authentification, flux temps réel"]
-    base[("Base de données<br/>[Conteneur : PostgreSQL, Neon, Francfort]<br/>Schéma platform : journal, points de reprise,<br/>boîte d'envoi, registre des effacements<br/>Schéma identity : comptes et sessions<br/>Schémas ranking, dungeon et market :<br/>modèles de lecture<br/>Schéma tavern : messages et présence")]
+    base[("Base de données<br/>[Conteneur : PostgreSQL, Neon, Francfort]<br/>Schéma platform : journal, points de reprise,<br/>boîte d'envoi, registre des effacements<br/>Schéma identity : comptes et sessions<br/>Schémas ranking, dungeon et market :<br/>modèles de lecture<br/>Schéma tavern : messages et présence<br/>Schéma clan : clans, membres,<br/>chat et trésor")]
   end
   joueur -->|"Utilise"| web
   web -->|"Pages, appels de l'API avec le cookie de session<br/>(HTTPS, JSON)"| serveur
@@ -44,6 +44,7 @@ flowchart TB
 
 Le journal d'événements est la seule source de vérité des modules Village, Donjon et Marché.
 La Taverne n'enregistre pas d'événements : ses tables sont sa propre source de vérité (ADR 0008).
+Il en va de même pour le Clan, dont les tables du schéma `clan` sont la source de vérité (ADR 0010).
 Les tables des schémas `ranking`, `dungeon` et `market` sont des modèles de lecture, dérivés du journal par des projections : elles peuvent
 être vidées puis reconstruites à tout moment, sans perte d'information.
 
@@ -67,6 +68,7 @@ flowchart TB
     ranking["ranking<br/>Classement : projection,<br/>lecture, API, canal global"]
     market["market<br/>Marché : orchestrateur de la saga,<br/>projection des offres, API, canal global"]
     tavern["tavern<br/>Taverne : messages et présence<br/>en tables, API, canal à source propre"]
+    clan["clan<br/>Clan : membres, chat et trésor<br/>en tables, orchestrateur de la saga des dons,<br/>API, un canal par clan"]
   end
   subgraph platform["src/platform"]
     auth["auth<br/>Port AuthPort,<br/>adaptateur Better Auth"]
@@ -83,13 +85,14 @@ flowchart TB
   route --> server
   pages --> server
   server --> createapi
-  createapi --> system & realm & dungeon & ranking & market & tavern & auth & http & realtime & projection & outbox & privacy & cron
+  createapi --> system & realm & dungeon & ranking & market & tavern & clan & auth & http & realtime & projection & outbox & privacy & cron
   realm --> store & realtime & http & outbox
   market --> store & projection & realtime & http & outbox
   dungeon --> store & projection & realtime & http
   ranking --> projection & realtime & http
   tavern --> realtime & http & db
-  realm & dungeon & market & ranking & tavern --> privacy
+  clan --> realtime & http & outbox & db
+  realm & dungeon & market & ranking & tavern & clan --> privacy
   privacy --> store
   auth --> privacy
   realtime --> store & http
@@ -117,6 +120,13 @@ La seule dépendance directe porte sur les contrats du Village (`REALM_TOPICS`, 
 qui décrivent ces messages. Chaque transaction ne modifie que les données d'un seul module,
 et la boîte d'envoi (ADR 0007).
 
+Le module `clan` communique avec le Village de la même manière, sans le modifier : un don au
+trésor envoie un message `realm.withdraw`, dont la réponse revient au sujet `clan.transferResult`,
+et une distribution envoie un message `realm.deposit`. Comme le Clan n'utilise pas le journal,
+il enregistre ses messages par la fonction `enqueue` de la boîte d'envoi, dans la transaction
+qui modifie ses propres tables (ADR 0011). Le chat d'un clan est diffusé sur un canal
+`clan-<identifiant>`, réservé à ses membres, et alimenté par la table de ses messages.
+
 Chaque module déclare ses données personnelles à la brique `privacy`, au moyen d'un fichier
 `personal-data.ts` : il les exporte, désigne les champs personnels de ses événements, et les
 efface de ses tables. La brique `privacy` contient la seule fonction du projet qui modifie un
@@ -140,6 +150,43 @@ de la plateforme ou d'un module, et chaque module qui conserve des données déc
 données personnelles.
 
 Seule la racine de composition connaît à la fois la plateforme et l'ensemble des modules.
+
+## Parcours d'un don au trésor d'un clan
+
+Le don traverse deux modules : le Clan, qui orchestre la saga, et le Village, qui prélève l'or.
+Les deux modules ne se parlent que par la boîte d'envoi.
+
+```mermaid
+sequenceDiagram
+  actor J as Joueur
+  participant C as Clan (API et service)
+  participant B as Tables du schéma clan
+  participant O as Boîte d'envoi
+  participant V as Village
+  J->>C: POST /api/clan/treasury/donations { amount }
+  C->>B: don « en attente »
+  C->>O: realm.withdraw (même transaction)
+  C->>O: déclenche la distribution
+  O->>V: realm.withdraw { transferId = don, gold }
+  V->>V: prélève l'or, ou refuse
+  V->>O: clan.transferResult { withdrawn ou refused }
+  O->>C: clan.transferResult
+  alt or prélevé, clan existant
+    C->>B: don « crédité », trésor + montant
+  else or manquant
+    C->>B: don « refusé »
+  else clan dissous entre-temps
+    C->>B: don « remboursé »
+    C->>O: realm.deposit (compensation)
+    O->>V: realm.deposit { gold }
+  end
+  C-->>J: 201 { donation }
+```
+
+La réponse est renvoyée après la distribution : dans le cas ordinaire, le joueur reçoit
+l'état final de son don. Si la distribution est interrompue, la saga reprend à la distribution
+suivante ; le gestionnaire du Clan ne règle un don qu'une seule fois, même si la réponse du
+Village lui est remise deux fois.
 
 ## Extraction du Village
 
@@ -186,7 +233,7 @@ l'ensemble des contrôles a réussi, et les migrations ne sont appliquées qu'ap
 
 La tâche planifiée, déclarée dans `vercel.json`, exécute chaque jour les tâches quotidiennes :
 la distribution des messages restés en attente dans la boîte d'envoi, et l'application des
-durées de conservation de la Taverne. Elle ne s'exécute que sur le déploiement de production.
+durées de conservation de la Taverne et du Clan. Elle ne s'exécute que sur le déploiement de production.
 
 Le service Village extrait n'est pas déployé : en production, le Village s'exécute dans
 les fonctions Vercel, comme les autres modules (ADR 0009).
