@@ -24,7 +24,9 @@
 
 - Le Clan n'utilise pas l'Event Sourcing : ses données sont rangées dans six tables
   ordinaires du schéma `clan` (`clans`, `members`, `requests`, `messages`, `donations`,
-  `distributions`), créées par la migration `0013_clan`.
+  `distributions`), créées par la migration `0013_clan`. La migration `0014_clan_revision`
+  ajoute à la table `clans` une révision, augmentée à chaque changement de ses membres, de ses
+  demandes ou de son trésor : elle sert de position au canal de l'état du clan (ADR-0011).
 - Le domaine applique ses règles à l'état courant d'un clan, lu dans ces tables, sous la
   forme de fonctions pures (`domain/clan.ts`, `domain/chat.ts`, `domain/treasury.ts`).
 - Les règles qui doivent résister aux requêtes simultanées sont aussi garanties par la base :

@@ -3,7 +3,6 @@
 - Auteur : Nathan Corberan
 - Date : 2026-10-21
 - Nom technique du module : `clan`
-- Validée par l'enseignant le :
 
 ## L'idée
 

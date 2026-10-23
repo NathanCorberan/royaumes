@@ -98,7 +98,10 @@ enregistrés après leur ouverture.
 Le canal `tavern` ne lit pas le journal, mais la table des messages de la Taverne : il
 transmet chaque nouveau message, avec son contenu, à tous les joueurs connectés. De même,
 le canal `clan-<clan>` lit la table des messages du Clan, filtrée sur ce clan : il transmet
-chaque nouveau message du chat, avec son contenu, aux seuls membres du clan.
+chaque nouveau message du chat, avec son contenu, aux seuls membres du clan. Le canal discret
+`clan-state-<clan>` annonce chaque changement des membres, des rôles, des demandes ou du trésor
+d'un clan, sans en transmettre le contenu : il est ouvert aux membres du clan et aux joueurs
+qui ont demandé à le rejoindre, dont la page se met ainsi à jour sans être rechargée.
 
 Les canaux du Donjon, du Classement et du Marché sont discrets : ils ne transmettent que la position,
 le type et la version des événements, et chaque navigateur relit sa propre vue, filtrée

@@ -14,8 +14,8 @@ revues. Il s'adresse à la personne qui reprendrait le projet.
 | --- | --- |
 | Modules métier | 7 : `realm`, `dungeon`, `market`, `ranking`, `tavern`, `clan`, `system` |
 | Briques de la plateforme | 9 : `auth`, `cron`, `db`, `event-store`, `http`, `outbox`, `privacy`, `projection`, `realtime` ; plus le service Village extrait (`src/services/village`, 81 lignes) |
-| Lignes de code, hors tests | Environ 10 350 (`src` et `app`), contre 8 210 à `td11-fin` |
-| Fichiers de test, nombre de tests | 37 fichiers, 304 tests, contre 33 fichiers et 232 tests à `td11-fin` |
+| Lignes de code, hors tests | Environ 10 520 (`src` et `app`), contre 8 210 à `td11-fin` |
+| Fichiers de test, nombre de tests | 37 fichiers, 308 tests, contre 33 fichiers et 232 tests à `td11-fin` |
 | Commits | 80 à l'étiquette `td11-fin` |
 | Hébergement | Vercel (Francfort), base Neon (Francfort) |
 
@@ -26,7 +26,7 @@ revues. Il s'adresse à la personne qui reprendrait le projet.
 | `market` | Event Sourcing, projection des offres, saga | 1 267 |
 | `ranking` | Projection du journal | 459 |
 | `tavern` | Tables ordinaires | 677 |
-| `clan` | Tables ordinaires, saga avec le Village | 2 331, dont l'interface (`ui.tsx`) |
+| `clan` | Tables ordinaires, saga avec le Village | 2 507, dont l'interface (`ui.tsx`) |
 | `system` | Aucun | 73 |
 
 Le Village est passé d'environ 940 à 1 084 lignes avec l'extraction : la différence
@@ -46,17 +46,17 @@ correspond au module distant (`remote.ts`).
 | 0008 | Taverne sans Event Sourcing, réécriture ciblée du journal | Revue de conformité au RGPD (R4, R5) ; copies relayées par l'extraction | A tenu : l'effacement atteint aussi les copies relayées. Prix : deux non-conformités hors de son périmètre, les sessions expirées et les journaux techniques |
 | 0009 | Extraction du Village, préparée mais non déployée | Tests de contrat et démonstration à deux processus (TD11, partie 4) | Décision récente, éprouvée en local seulement : rien ne l'a encore confrontée à un déploiement |
 | 0010 | Stockage classique pour le Clan, dans son propre schéma | Revue de sécurité du Clan (C11, C12, C13) ; effacement du compte d'un chef | A tenu après correction : la revue a montré que le plafond de vingt membres pouvait être dépassé lors de deux acceptations simultanées ; l'acceptation verrouille désormais le clan. Prix : aucun historique du clan, et des dons sans durée de conservation (DT-014) |
-| 0011 | Saga du trésor du Clan avec le Village, par la boîte d'envoi | Réponse du Village remise deux fois, clan dissous pendant un prélèvement (C9, C10) | A tenu : le Village n'a pas été modifié, et la compensation reverse l'or prélevé. Prix : une fonction `enqueue` ajoutée à la plateforme, pour un module qui n'enregistre pas d'événements |
+| 0011 | Saga du trésor du Clan avec le Village, par la boîte d'envoi | Réponse du Village remise deux fois, clan dissous pendant un prélèvement (C9, C10) ; canal de l'état du clan (C14) | A tenu : le Village n'a pas été modifié, et la compensation reverse l'or prélevé. Prix : une fonction `enqueue` ajoutée à la plateforme, pour un module qui n'enregistre pas d'événements |
 
 ## 3. La qualité
 
 | Caractéristique | Indicateur | Valeur | Appréciation |
 | --- | --- | --- | --- |
-| Adéquation fonctionnelle | Tests réussis ; couverture des domaines | 304 tests réussis, contre 232 à `td11-fin` ; domaines couverts à 99,8 % des lignes (99,7 % à `td11-fin`), domaine du Clan à 100 % | Satisfaisante : toutes les règles du jeu, dont les dix règles du Clan, sont vérifiées sans base ni réseau |
+| Adéquation fonctionnelle | Tests réussis ; couverture des domaines | 308 tests réussis, contre 232 à `td11-fin` ; domaines couverts à 99,8 % des lignes (99,7 % à `td11-fin`), domaine du Clan à 100 % | Satisfaisante : toutes les règles du jeu, dont les dix règles du Clan, sont vérifiées sans base ni réseau |
 | Efficacité des performances | Débit et p99 des lectures ; respect du budget | De 263 (Marché) à 458 (Village) requêtes par seconde ; p99 de 60 à 104 ms, sans erreur (`perf/apres.json`) | Satisfaisante : budget respecté (p99 inférieur à 500 ms sous 20 connexions). Mesure locale, qui ne prédit pas la production mais permet de comparer |
 | Fiabilité | Tests de concurrence, de reprise et d'idempotence ; messages abandonnés | Tests de distributions et d'acceptations simultanées, de messages remis deux fois, de reprise après panne du service ; le Clan y ajoute deux tests de concurrence (membres, trésor) et un test d'idempotence des dons ; aucun message abandonné sur la base de développement | Satisfaisante : les messages abandonnés peuvent désormais être examinés et relancés (`scripts/dead-letters.ts`) |
-| Sécurité | Exigences des revues de sécurité | 53 exigences : 45 conformes, 5 non conformes, 3 risques acceptés (40 exigences, 34 conformes, 1 risque accepté à `td11-fin`) | À améliorer : les cinq non-conformités de la revue de l'authentification n'ont pas été traitées. La revue du Clan n'en ajoute aucune |
-| Maintenabilité | Règles d'architecture ; fonctions d'aptitude ; couverture | 8 règles de dependency-cruiser sans violation, comme à `td11-fin` ; 2 fonctions d'aptitude vérifiées par des tests ; 74,7 % des lignes couvertes, contre 75 % à `td11-fin` | Satisfaisante pour le serveur (modules hors interface à 96,3 %, Clan hors interface à 96,1 %, plateforme à 88,3 %). La légère baisse vient de l'interface du Clan : l'interface (`ui.tsx`, `src/ui/`) reste couverte à 0 %, elle n'est vérifiée qu'à la main, et une régression du temps réel ne serait détectée par aucun test |
+| Sécurité | Exigences des revues de sécurité | 54 exigences : 46 conformes, 5 non conformes, 3 risques acceptés (40 exigences, 34 conformes, 1 risque accepté à `td11-fin`) | À améliorer : les cinq non-conformités de la revue de l'authentification n'ont pas été traitées. La revue du Clan n'en ajoute aucune |
+| Maintenabilité | Règles d'architecture ; fonctions d'aptitude ; couverture | 8 règles de dependency-cruiser sans violation, comme à `td11-fin` ; 2 fonctions d'aptitude vérifiées par des tests ; 74,8 % des lignes couvertes, contre 75 % à `td11-fin` | Satisfaisante pour le serveur (modules hors interface à 96,3 %, Clan hors interface à 96 %, plateforme à 88,3 %). La légère baisse vient de l'interface du Clan : l'interface (`ui.tsx`, `src/ui/`) reste couverte à 0 %, elle n'est vérifiée qu'à la main, et une régression du temps réel ne serait détectée par aucun test |
 | Flexibilité | Extraction d'un module ; changement de base entre local et production | Village extrait dans un service autonome, réversible sans migration ; PGlite en local et en test, Neon en production, sans changement de code | Satisfaisante : la promesse de l'ADR 0001 est démontrée |
 
 ## 4. La dette technique
@@ -87,7 +87,7 @@ oubliée.
 | Sécurité de l'authentification | 16 | 11 | 5 non conformes (S3, S5, S7, S9, S14) | 5 actions à décider, absentes du registre de la dette |
 | Sécurité du Donjon | 14 | 13 | 1 risque accepté (D10) | Aucune |
 | Sécurité du Marché | 10 | 10 | Aucune | Aucune (DT-007 remboursée) |
-| Sécurité du Clan | 13 | 11 | 2 risques acceptés (C5, C13) | DT-013, DT-014 |
+| Sécurité du Clan | 14 | 12 | 2 risques acceptés (C5, C13) | DT-013, DT-014 |
 | Conformité au RGPD | 10 | 7 | 2 non conformes (R8, R9), 1 risque accepté (R10) | DT-008, DT-009 |
 
 ## 6. Risques et recommandations

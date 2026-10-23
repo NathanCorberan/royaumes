@@ -68,7 +68,7 @@ flowchart TB
     ranking["ranking<br/>Classement : projection,<br/>lecture, API, canal global"]
     market["market<br/>Marché : orchestrateur de la saga,<br/>projection des offres, API, canal global"]
     tavern["tavern<br/>Taverne : messages et présence<br/>en tables, API, canal à source propre"]
-    clan["clan<br/>Clan : membres, chat et trésor<br/>en tables, orchestrateur de la saga des dons,<br/>API, un canal par clan"]
+    clan["clan<br/>Clan : membres, chat et trésor<br/>en tables, orchestrateur de la saga des dons,<br/>API, deux canaux par clan"]
   end
   subgraph platform["src/platform"]
     auth["auth<br/>Port AuthPort,<br/>adaptateur Better Auth"]
@@ -125,7 +125,9 @@ trésor envoie un message `realm.withdraw`, dont la réponse revient au sujet `c
 et une distribution envoie un message `realm.deposit`. Comme le Clan n'utilise pas le journal,
 il enregistre ses messages par la fonction `enqueue` de la boîte d'envoi, dans la transaction
 qui modifie ses propres tables (ADR 0011). Le chat d'un clan est diffusé sur un canal
-`clan-<identifiant>`, réservé à ses membres, et alimenté par la table de ses messages.
+`clan-<identifiant>`, réservé à ses membres, et alimenté par la table de ses messages. Un
+second canal, `clan-state-<identifiant>`, annonce sans aucune donnée chaque changement de
+l'état du clan, dont sa révision est la position : chaque abonné relit alors l'état du clan.
 
 Chaque module déclare ses données personnelles à la brique `privacy`, au moyen d'un fichier
 `personal-data.ts` : il les exporte, désigne les champs personnels de ses événements, et les

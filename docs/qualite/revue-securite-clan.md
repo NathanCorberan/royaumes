@@ -1,7 +1,7 @@
 # Revue de sécurité du Clan : contrôle d'accès et intégrité du trésor
 
 - Date : 2026-10-23
-- Périmètre : API du module Clan, canal temps réel `clan-<clan>`, saga des dons avec le Village, distributions du trésor, données personnelles du module.
+- Périmètre : API du module Clan, canaux temps réel `clan-<clan>` et `clan-state-<clan>`, saga des dons avec le Village, distributions du trésor, données personnelles du module.
 - Références : OWASP Top 10 (A01 Broken Access Control, A03 Injection, A04 Insecure Design, A08 Software and Data Integrity Failures).
 
 | N° | Exigence | Vérification | Constat | Statut |
@@ -19,9 +19,10 @@
 | C11 | Le trésor ne devient jamais négatif, même lors de distributions simultanées ; seul le chef distribue | Tests « ne rend jamais le trésor négatif, même lors de deux distributions simultanées » et « refuse une distribution au-delà du trésor (409), par un simple membre (403) ou à un inconnu (404) » | Avec 100 or au trésor, deux distributions simultanées de 70 or donnent une réponse 201 et une 409 : le trésor reste à 30, et Bob ne reçoit que 70 or. Le débit est une mise à jour conditionnée par `treasury >= montant`. Un simple membre ne distribue pas (403), et l'or ne va qu'à un membre du clan (404). | conforme |
 | C12 | Un clan ne dépasse jamais 20 membres, même lors d'acceptations simultanées | Test « ne dépasse pas 20 membres, même si deux demandes sont acceptées en même temps » | Avec 19 membres, deux acceptations simultanées donnent une réponse 200 et une 409, et le clan compte 20 membres. L'acceptation verrouille la ligne du clan (`FOR UPDATE`) avant de compter ses membres. Sans ce verrou, le test obtient deux réponses 200. | conforme |
 | C13 | Les données personnelles sont exportées sans celles des autres, et effacées avec le compte | Tests « exporte l'appartenance, les demandes et les messages du joueur, sans ceux des autres », « efface le compte du chef... », « efface le compte du dernier membre : le clan est dissous » | L'export de Bob ne contient que ses propres messages. L'effacement supprime l'appartenance, les demandes, les messages, les distributions et les dons réglés du joueur ; un don encore en attente est conservé le temps que la saga se termine. Le rôle d'un chef effacé passe à son successeur, et le clan d'un dernier membre effacé est dissous. Les messages sont supprimés au bout de 30 jours, à la lecture comme par la tâche quotidienne. Les dons et les distributions n'ont pas de durée de conservation. | risque accepté (DT-014) |
+| C14 | Le canal de l'état d'un clan ne révèle rien de son contenu, et n'est ouvert qu'à ses membres et aux joueurs qui ont demandé à le rejoindre | Tests « annonce chaque changement de l'état du clan sur son canal, sans en transmettre le contenu » et « réserve le canal de l'état du clan à ses membres et aux joueurs qui ont demandé à le rejoindre (403) » | Chaque événement du canal `clan-state-<clan>` a pour données `{}` : seule la révision du clan est transmise. Bob ne peut pas ouvrir le canal avant sa demande (403), le peut ensuite, et ne le peut plus après le refus de sa demande (403) ; Zoé, sans lien avec le clan, est refusée (403). | conforme |
 
 ## Synthèse
 
-11 exigences conformes, 0 non conformes, 2 risques acceptés.
+12 exigences conformes, 0 non conformes, 2 risques acceptés.
 
 Action décidée : la revue a révélé que deux acceptations simultanées pouvaient porter un clan à 21 membres (C12). Le défaut a été corrigé par le verrouillage du clan pendant l'acceptation, et un test le vérifie. Les deux risques acceptés sont consignés dans le registre de la dette technique : la vérification de l'appartenance à l'ouverture seule du flux du chat (DT-013), et l'absence de durée de conservation des dons et des distributions (DT-014).

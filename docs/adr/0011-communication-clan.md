@@ -42,6 +42,12 @@
 - La source d'un canal reçoit désormais le nom du canal. Le Clan déclare un canal par clan,
   `clan-<identifiant>`, alimenté par la table de ses messages filtrée sur ce clan, et réservé
   à ses membres.
+- Un second canal par clan, `clan-state-<identifiant>`, annonce chaque changement de l'état du
+  clan : ses membres et leurs rôles, ses demandes, son trésor. Il ne transmet aucune donnée :
+  sa position est la révision du clan (ADR-0010), et chaque abonné relit l'état du clan auprès
+  de l'API, comme avec un canal discret. Il est ouvert aux membres du clan et aux joueurs qui
+  ont demandé à le rejoindre, qui voient ainsi aussitôt l'acceptation ou le refus. La
+  dissolution est annoncée par un dernier événement, à la plus grande position possible.
 - Le Village n'est pas modifié : le Clan utilise les sujets existants de son langage publié.
 
 ## Conséquences
