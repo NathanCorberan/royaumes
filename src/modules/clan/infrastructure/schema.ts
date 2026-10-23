@@ -13,6 +13,11 @@ export const clans = clan.table('clans', {
   tag: text('tag').notNull().unique(),
   treasury: integer('treasury').notNull().default(0),
   foundedAt: bigint('founded_at', { mode: 'number' }).notNull(),
+  /**
+   * Révision de l'état du clan, augmentée à chaque changement de ses membres, de ses demandes
+   * ou de son trésor : elle sert de position au canal temps réel de l'état du clan.
+   */
+  revision: integer('revision').notNull().default(0),
 })
 
 /**

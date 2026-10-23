@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { createClanModule } from '@/modules/clan'
 import type { ClanMessage, ClanSummary, ClanView, JoinRequestView } from '@/modules/clan/contracts'
 import { donations } from '@/modules/clan/infrastructure/schema'
 import { REALM_TOPICS, type Stock } from '@/modules/realm/contracts'
 import { enqueue } from '@/platform/outbox/outbox'
+import type { ChannelSource } from '@/platform/realtime/channel-policy'
 import { createTestApi, TEST_CRON_SECRET } from './testing'
 
 type TestApi = Awaited<ReturnType<typeof createTestApi>>
@@ -304,6 +306,47 @@ describe('API du module Clan - le chat', () => {
     expect((await api.get(`/api/stream/clan-${clan.id}/events`, 'bob')).status).toBe(403)
   })
 
+  it("annonce chaque changement de l'état du clan sur son canal, sans en transmettre le contenu", async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    const revisions = async (player = 'alice') => {
+      const res = await api.get(`/api/stream/clan-state-${clan.id}/events?after=0`, player)
+      return (await res.json()) as { events: { position: number; type: string; data: object }[] }
+    }
+    expect((await revisions()).events).toEqual([])
+    await api.post(`/api/clan/clans/${clan.id}/requests`, {}, 'bob')
+    const afterRequest = (await revisions()).events
+    expect(afterRequest).toMatchObject([{ position: 1, type: 'ClanChanged', data: {} }])
+    await api.post('/api/clan/requests/' + (await me(api, 'bob')).requests[0].id + '/accept', {})
+    const afterAccept = (await revisions()).events[0].position
+    expect(afterAccept).toBeGreaterThan(1)
+    await api.post('/api/clan/members/bob/promote', {})
+    expect((await revisions('bob')).events[0].position).toBeGreaterThan(afterAccept)
+  })
+
+  it("réserve le canal de l'état du clan à ses membres et aux joueurs qui ont demandé à le rejoindre (403)", async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    const open = (player: string) =>
+      api.get(`/api/stream/clan-state-${clan.id}/events?after=0`, player)
+    expect((await open('bob')).status).toBe(403)
+    const res = await api.post(`/api/clan/clans/${clan.id}/requests`, {}, 'bob')
+    const { request } = (await res.json()) as { request: JoinRequestView }
+    expect((await open('bob')).status).toBe(200)
+    expect((await open('zoe')).status).toBe(403)
+    await api.post(`/api/clan/requests/${request.id}/refuse`, {})
+    expect((await open('bob')).status).toBe(403)
+  })
+
+  it("annonce la dissolution d'un clan à ses abonnés, une seule fois", async () => {
+    const api = await createTestApi()
+    const { channelPolicy } = createClanModule({ db: api.db, dispatch: async () => {} })
+    const source = channelPolicy.source as ChannelSource
+    const [dissolved] = await source.read(0, 'clan-state-inconnu')
+    expect(dissolved).toMatchObject({ type: 'ClanDissolved', data: {} })
+    expect(await source.read(dissolved.position, 'clan-state-inconnu')).toEqual([])
+  })
+
   it("ne diffuse sur le canal d'un clan que ses propres messages", async () => {
     const api = await createTestApi()
     const loups = await found(api)
@@ -418,6 +461,21 @@ describe('API du module Clan - le trésor', () => {
     ])
     await dispatch(api)
     expect((await me(api)).clan?.treasury).toBe(100)
+  })
+
+  it("annonce les dons et les distributions sur le canal de l'état du clan", async () => {
+    const { api, clan } = await clanWithGold()
+    const revision = async () => {
+      const res = await api.get(`/api/stream/clan-state-${clan.id}/events?after=0`)
+      const { events } = (await res.json()) as { events: { position: number }[] }
+      return events[0].position
+    }
+    const before = await revision()
+    await donate(api, 100, 'bob')
+    const afterDonation = await revision()
+    expect(afterDonation).toBeGreaterThan(before)
+    await api.post('/api/clan/treasury/distributions', { playerId: 'bob', amount: 50 })
+    expect(await revision()).toBeGreaterThan(afterDonation)
   })
 
   it("le chef distribue de l'or du trésor à un membre, qui le reçoit dans son village (201)", async () => {

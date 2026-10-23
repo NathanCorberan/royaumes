@@ -230,8 +230,20 @@ export function createClanService(
     return { ok: true, dissolved: checked.value.dissolve }
   }
 
+  /**
+   * Vrai si le joueur peut suivre l'état du clan : il en est membre, ou il a demandé à le
+   * rejoindre, et attend la réponse.
+   */
+  async function canWatch(clanId: string, playerId: string) {
+    const clan = await repo.clanOf(playerId)
+    if (clan) return clan.id === clanId
+    return (await repo.requestsOf(playerId)).some((request) => request.clanId === clanId)
+  }
+
   return {
     purgeRequests,
+    canWatch,
+    revision: (clanId: string) => repo.revision(clanId),
     me,
     list: () => repo.list(),
     found,

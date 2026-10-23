@@ -99,6 +99,13 @@
       "when": 1792594206811,
       "tag": "0013_clan",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792755196827,
+      "tag": "0014_clan_revision",
+      "breakpoints": true
     }
   ]
 }

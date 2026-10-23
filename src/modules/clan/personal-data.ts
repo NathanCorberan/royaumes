@@ -1,4 +1,4 @@
-import { and, asc, eq, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { Db } from '@/platform/db/client'
 import type { PersonalDataContributor } from '@/platform/privacy/privacy'
 import { type Clan, type Role, successorOf } from './domain/clan'
@@ -64,7 +64,10 @@ export function createClanPersonalData(db: Db): PersonalDataContributor {
 
     async erase(playerId) {
       await db.delete(messages).where(eq(messages.authorId, playerId))
-      await db.delete(requests).where(eq(requests.playerId, playerId))
+      const requested = await db
+        .delete(requests)
+        .where(eq(requests.playerId, playerId))
+        .returning({ clanId: requests.clanId })
       // Les dons en attente sont conservés le temps que la saga se termine : sans eux, l'or
       // prélevé dans le village ne pourrait être ni crédité ni rendu.
       await db
@@ -74,18 +77,32 @@ export function createClanPersonalData(db: Db): PersonalDataContributor {
 
       // Le joueur quitte son clan. S'il en était le chef, son rôle passe à son successeur ;
       // s'il en était le dernier membre, le clan est dissous.
+      const touched = requested.map((row) => row.clanId)
       const clan = await clanOf(playerId)
-      if (!clan) return
-      const me = clan.members.find((member) => member.playerId === playerId)
-      if (me?.role === 'leader') {
-        const next = successorOf(clan, playerId)
-        if (!next) {
+      if (clan) {
+        touched.push(clan.id)
+        const me = clan.members.find((member) => member.playerId === playerId)
+        const next = me?.role === 'leader' ? successorOf(clan, playerId) : undefined
+        if (next === null) {
           await db.delete(clans).where(eq(clans.id, clan.id))
-          return
+        } else {
+          if (next) {
+            await db
+              .update(members)
+              .set({ role: next.role })
+              .where(eq(members.playerId, next.playerId))
+          }
+          await db.delete(members).where(eq(members.playerId, playerId))
         }
-        await db.update(members).set({ role: next.role }).where(eq(members.playerId, next.playerId))
       }
-      await db.delete(members).where(eq(members.playerId, playerId))
+
+      // Les clans concernés en sont avertis par le canal de leur état.
+      if (touched.length > 0) {
+        await db
+          .update(clans)
+          .set({ revision: sql`${clans.revision} + 1` })
+          .where(inArray(clans.id, touched))
+      }
     },
   }
 }

@@ -48,4 +48,10 @@ export interface ClanRepository {
   removeRequestsOf(playerId: string): Promise<void>
   /** Supprime les demandes envoyées au plus tard à l'instant at ; renvoie leur nombre. */
   removeRequestsUntil(at: number): Promise<number>
+
+  /**
+   * Révision de l'état d'un clan, augmentée par chacune des modifications ci-dessus ;
+   * null si le clan n'existe pas.
+   */
+  revision(clanId: string): Promise<number | null>
 }

@@ -9,7 +9,15 @@ import { createClanApi } from './api'
 import { createChatService } from './application/chat-service'
 import { createClanService } from './application/clan-service'
 import { createTreasuryService } from './application/treasury-service'
-import { CLAN_CHANNEL_PREFIX, CLAN_MESSAGE_POSTED, clanChannel } from './contracts'
+import {
+  CLAN_CHANGED,
+  CLAN_CHANNEL_PREFIX,
+  CLAN_DISSOLVED,
+  CLAN_MESSAGE_POSTED,
+  CLAN_STATE_CHANNEL_PREFIX,
+  clanChannel,
+  clanStateChannel,
+} from './contracts'
 import { createDrizzleClanRepository } from './infrastructure/drizzle-clan-repository'
 import { createDrizzleMessageRepository } from './infrastructure/drizzle-message-repository'
 import { createDrizzleTreasuryRepository } from './infrastructure/drizzle-treasury-repository'
@@ -41,17 +49,52 @@ export function createClanModule({ db, dispatch, clock }: ClanModuleDeps) {
     clock,
   })
 
-  // Canal du chat d'un clan : seuls ses membres peuvent l'écouter, et un joueur exclu ou parti
-  // perd l'accès dès sa prochaine connexion. Comme celui de la Taverne, le canal ne lit pas le
+  /** Clan désigné par un canal de l'état d'un clan, ou null pour un canal du chat. */
+  const stateOf = (channel: string) =>
+    channel.startsWith(CLAN_STATE_CHANNEL_PREFIX)
+      ? channel.slice(CLAN_STATE_CHANNEL_PREFIX.length)
+      : null
+
+  /**
+   * Canal de l'état d'un clan : un seul événement, sans données, annonce que sa révision a
+   * changé, et l'abonné relit l'état du clan auprès de l'API. La révision sert de position.
+   * La dissolution est annoncée par un dernier événement, à la position la plus grande.
+   */
+  async function readState(clanId: string, after: number) {
+    const revision = await service.revision(clanId)
+    if (revision === null) {
+      if (after >= Number.MAX_SAFE_INTEGER) return []
+      return [stateEvent(clanId, Number.MAX_SAFE_INTEGER, CLAN_DISSOLVED)]
+    }
+    return revision > after ? [stateEvent(clanId, revision, CLAN_CHANGED)] : []
+  }
+
+  const stateEvent = (clanId: string, position: number, type: string) => ({
+    position,
+    stream: clanStateChannel(clanId),
+    version: position,
+    type,
+    data: {},
+    occurredAt: new Date(clock?.() ?? Date.now()),
+  })
+
+  // Canaux d'un clan. Le canal du chat n'est accessible qu'à ses membres ; celui de son état,
+  // aussi aux joueurs qui ont demandé à le rejoindre. Un joueur exclu ou parti perd l'accès
+  // dès sa prochaine connexion. Comme celui de la Taverne, le canal du chat ne lit pas le
   // journal, mais la table des messages, filtrée sur le clan désigné par le nom du canal.
   // DETTE TECHNIQUE (docs/qualite/dette-technique.md, DT-013) : l'appartenance n'est vérifiée
   // qu'à l'ouverture du flux ; un membre exclu reçoit les messages jusqu'à sa fermeture.
   const channelPolicy: ChannelPolicy = {
     prefix: CLAN_CHANNEL_PREFIX,
-    canSubscribe: (channel, userId) =>
-      chat.isMember(channel.slice(CLAN_CHANNEL_PREFIX.length), userId),
+    canSubscribe(channel, userId) {
+      const watched = stateOf(channel)
+      if (watched !== null) return service.canWatch(watched, userId)
+      return chat.isMember(channel.slice(CLAN_CHANNEL_PREFIX.length), userId)
+    },
     source: {
       async read(after, channel) {
+        const watched = stateOf(channel)
+        if (watched !== null) return readState(watched, after)
         const clanId = channel.slice(CLAN_CHANNEL_PREFIX.length)
         const fresh = await chat.after(clanId, after, CHANNEL_BATCH)
         return fresh.map((message) => ({
@@ -63,8 +106,13 @@ export function createClanModule({ db, dispatch, clock }: ClanModuleDeps) {
           occurredAt: new Date(message.postedAt),
         }))
       },
-      // Un nouvel abonné ne reçoit que les messages à venir ; l'historique est lu par l'API.
-      start: () => chat.lastId(),
+      // Un nouvel abonné ne reçoit que les changements à venir ; l'état et l'historique du chat
+      // sont lus par l'API.
+      async start(channel) {
+        const watched = stateOf(channel)
+        if (watched === null) return chat.lastId()
+        return (await service.revision(watched)) ?? 0
+      },
     },
   }
 

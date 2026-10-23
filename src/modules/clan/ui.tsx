@@ -10,6 +10,7 @@ import {
   type ClanSummary,
   type ClanView,
   clanChannel,
+  clanStateChannel,
   type DonationView,
   type JoinRequestView,
   MAX_MEMBERS,
@@ -119,8 +120,15 @@ export function ClanScreen() {
 
   if (!loaded) return <p className="muted">Chargement...</p>
 
+  // TEMPS RÉEL : l'état du clan du joueur est suivi, ou à défaut celui des clans qu'il a
+  // demandé à rejoindre, pour qu'il voie aussitôt l'acceptation ou le refus.
+  const watched = clan ? [clan.id] : mine.map((request) => request.clanId)
+
   return (
     <>
+      {watched.map((clanId) => (
+        <ClanWatcher key={clanId} clanId={clanId} onChange={refresh} />
+      ))}
       <h1>
         <Entity kind="clan" /> {clan ? `${clan.name} [${clan.tag}]` : 'Clans'}
       </h1>
@@ -429,6 +437,21 @@ function merge(current: ClanMessage[], added: ClanMessage[]): ClanMessage[] {
 /** Heure d'un message, au format local. */
 const timeOf = (at: number) =>
   new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+/**
+ * Abonnement au canal de l'état d'un clan : chaque changement de ses membres, de ses demandes
+ * ou de son trésor fait relire l'état du clan. Le composant n'affiche rien.
+ */
+function ClanWatcher({ clanId, onChange }: { clanId: string; onChange: () => void }) {
+  const status = useChannel(clanStateChannel(clanId), onChange)
+
+  // Après une reconnexion, l'état est relu : un changement a pu avoir lieu entre-temps.
+  useEffect(() => {
+    if (status === 'open') onChange()
+  }, [status, onChange])
+
+  return null
+}
 
 /** Chat du clan, réservé à ses membres, reçu en temps réel. */
 function ClanChat({ clanId }: { clanId: string }) {

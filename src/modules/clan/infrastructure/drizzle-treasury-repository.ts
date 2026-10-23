@@ -39,7 +39,10 @@ export function createDrizzleTreasuryRepository(db: Db): TreasuryRepository {
         if (credit) {
           await tx
             .update(clans)
-            .set({ treasury: sql`${clans.treasury} + ${settled.amount}` })
+            .set({
+              treasury: sql`${clans.treasury} + ${settled.amount}`,
+              revision: sql`${clans.revision} + 1`,
+            })
             .where(eq(clans.id, settled.clanId))
         }
         await enqueue(tx as unknown as Db, messages)
@@ -53,7 +56,10 @@ export function createDrizzleTreasuryRepository(db: Db): TreasuryRepository {
         // négatif, même en cas de distributions simultanées.
         const debited = await tx
           .update(clans)
-          .set({ treasury: sql`${clans.treasury} - ${distribution.amount}` })
+          .set({
+            treasury: sql`${clans.treasury} - ${distribution.amount}`,
+            revision: sql`${clans.revision} + 1`,
+          })
           .where(and(eq(clans.id, distribution.clanId), gte(clans.treasury, distribution.amount)))
           .returning({ id: clans.id })
         if (debited.length === 0) return false

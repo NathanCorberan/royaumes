@@ -75,6 +75,22 @@ export const clanChannel = (clanId: string) => `${CLAN_CHANNEL_PREFIX}${clanId}`
 /** Type sous lequel un nouveau message est annoncé sur le canal d'un clan. */
 export const CLAN_MESSAGE_POSTED = 'ClanMessagePosted'
 
+/** Préfixe des canaux de l'état des clans. Il commence par CLAN_CHANNEL_PREFIX. */
+export const CLAN_STATE_CHANNEL_PREFIX = `${CLAN_CHANNEL_PREFIX}state-`
+
+/**
+ * Nom du canal de l'état d'un clan : il annonce chaque changement de ses membres, de ses
+ * demandes ou de son trésor, sans en transmettre le contenu. Il est réservé aux membres du
+ * clan, et aux joueurs qui ont demandé à le rejoindre.
+ */
+export const clanStateChannel = (clanId: string) => `${CLAN_STATE_CHANNEL_PREFIX}${clanId}`
+
+/** Type sous lequel un changement de l'état d'un clan est annoncé. */
+export const CLAN_CHANGED = 'ClanChanged'
+
+/** Type sous lequel la dissolution d'un clan est annoncée, en dernier événement de son canal. */
+export const CLAN_DISSOLVED = 'ClanDissolved'
+
 // ---------------------------------------------------------------------------
 // Le trésor : les dons et les distributions passent par des messages au Village
 // ---------------------------------------------------------------------------

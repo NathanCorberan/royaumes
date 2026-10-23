@@ -1,4 +1,4 @@
-import { asc, count, eq, lte, TransactionRollbackError } from 'drizzle-orm'
+import { asc, count, eq, inArray, lte, sql, TransactionRollbackError } from 'drizzle-orm'
 import type { Db } from '@/platform/db/client'
 import type { ClanRepository } from '../application/clan-repository'
 import type { Clan, Member, Role } from '../domain/clan'
@@ -30,6 +30,20 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
   }
 
   const toRow = (clanId: string, member: Member) => ({ ...member, clanId })
+
+  /**
+   * Augmente la révision des clans modifiés : leurs abonnés relisent alors leur état.
+   * Elle est appliquée après la modification, et n'a pas besoin de la même transaction :
+   * un abonné qui relit l'état trop tôt est averti de nouveau par la révision suivante.
+   */
+  async function touch(clanIds: string[]) {
+    const ids = [...new Set(clanIds)]
+    if (ids.length === 0) return
+    await db
+      .update(clans)
+      .set({ revision: sql`${clans.revision} + 1` })
+      .where(inArray(clans.id, ids))
+  }
 
   return {
     async clanOf(playerId) {
@@ -84,7 +98,7 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
     },
 
     async addMember(clanId, member, max) {
-      return db.transaction(async (tx) => {
+      const added = await db.transaction(async (tx) => {
         // Le clan est verrouillé jusqu'à la fin de la transaction : une acceptation simultanée
         // attend celle-ci, et compte donc le membre qu'elle vient d'ajouter.
         await tx.select({ id: clans.id }).from(clans).where(eq(clans.id, clanId)).for('update')
@@ -98,23 +112,34 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
           .values(toRow(clanId, member))
           .onConflictDoNothing()
           .returning()
-        return joined.length > 0 ? 'added' : 'in-clan'
+        return joined.length > 0 ? ('added' as const) : ('in-clan' as const)
       })
+      if (added === 'added') await touch([clanId])
+      return added
     },
 
     async setRoles(changed) {
-      await db.transaction(async (tx) => {
+      const clanIds = await db.transaction(async (tx) => {
+        const ids: string[] = []
         for (const member of changed) {
-          await tx
+          const updated = await tx
             .update(members)
             .set({ role: member.role })
             .where(eq(members.playerId, member.playerId))
+            .returning({ clanId: members.clanId })
+          ids.push(...updated.map((row) => row.clanId))
         }
+        return ids
       })
+      await touch(clanIds)
     },
 
     async removeMember(playerId) {
-      await db.delete(members).where(eq(members.playerId, playerId))
+      const removed = await db
+        .delete(members)
+        .where(eq(members.playerId, playerId))
+        .returning({ clanId: members.clanId })
+      await touch(removed.map((row) => row.clanId))
     },
 
     async dissolve(clanId) {
@@ -124,6 +149,7 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
 
     async addRequest(request) {
       await db.insert(requests).values(request)
+      await touch([request.clanId])
     },
 
     async request(requestId) {
@@ -144,19 +170,36 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
     },
 
     async removeRequest(requestId) {
-      await db.delete(requests).where(eq(requests.id, requestId))
+      const removed = await db
+        .delete(requests)
+        .where(eq(requests.id, requestId))
+        .returning({ clanId: requests.clanId })
+      await touch(removed.map((row) => row.clanId))
     },
 
     async removeRequestsOf(playerId) {
-      await db.delete(requests).where(eq(requests.playerId, playerId))
+      const removed = await db
+        .delete(requests)
+        .where(eq(requests.playerId, playerId))
+        .returning({ clanId: requests.clanId })
+      await touch(removed.map((row) => row.clanId))
     },
 
     async removeRequestsUntil(at) {
       const removed = await db
         .delete(requests)
         .where(lte(requests.requestedAt, at))
-        .returning({ id: requests.id })
+        .returning({ clanId: requests.clanId })
+      await touch(removed.map((row) => row.clanId))
       return removed.length
+    },
+
+    async revision(clanId) {
+      const [row] = await db
+        .select({ revision: clans.revision })
+        .from(clans)
+        .where(eq(clans.id, clanId))
+      return row ? row.revision : null
     },
   }
 }
