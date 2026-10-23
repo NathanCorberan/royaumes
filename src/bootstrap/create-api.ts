@@ -100,6 +100,7 @@ export function createApi({
       market.personalData,
       ranking.personalData,
       tavern.personalData,
+      clan.personalData,
       createIdentityPersonalData(db),
     ],
     clock,

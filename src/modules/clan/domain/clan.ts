@@ -232,3 +232,15 @@ export function checkLeave(clan: Clan, playerId: string): Checked<{ dissolve: bo
   if (clan.members.length > 1) return fail({ code: 'LEADER_MUST_TRANSFER' })
   return { ok: true, value: { dissolve: true } }
 }
+
+/**
+ * Successeur du chef dont le compte est effacé : l'officier le plus ancien, à défaut le membre
+ * le plus ancien. Renvoie null si le chef est le dernier membre : le clan est alors dissous.
+ */
+export function successorOf(clan: Clan, leaderId: string): Member | null {
+  const others = clan.members
+    .filter((member) => member.playerId !== leaderId)
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+  const next = others.find((member) => member.role === 'officer') ?? others[0]
+  return next ? { ...next, role: 'leader' } : null
+}

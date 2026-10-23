@@ -15,6 +15,7 @@ import {
   MAX_MEMBERS,
   type Member,
   REQUEST_TTL_MS,
+  successorOf,
 } from './clan'
 
 const T0 = Date.UTC(2026, 0, 1)
@@ -236,5 +237,35 @@ describe('Règle 7 - le départ', () => {
 
   it("un joueur ne quitte pas un clan dont il n'est pas membre", () => {
     expect(checkLeave(clan, 'zoe')).toEqual({ ok: false, error: { code: 'NOT_A_MEMBER' } })
+  })
+})
+
+describe("Données personnelles - l'effacement du compte du chef", () => {
+  it("transmet le rôle de chef à l'officier le plus ancien", () => {
+    const officers = {
+      ...clan,
+      members: [...clan.members, { ...member('dave', 'officer'), joinedAt: T0 + 1 }],
+    }
+    expect(successorOf(officers, 'alice')).toEqual({ ...member('bob'), role: 'leader' })
+  })
+
+  it("à défaut d'officier, transmet le rôle au membre le plus ancien", () => {
+    const noOfficer = {
+      ...clan,
+      members: [
+        member('alice', 'leader'),
+        { ...member('carol'), joinedAt: T0 + 2 },
+        { ...member('dave'), joinedAt: T0 + 1 },
+      ],
+    }
+    expect(successorOf(noOfficer, 'alice')).toEqual({
+      ...member('dave'),
+      joinedAt: T0 + 1,
+      role: 'leader',
+    })
+  })
+
+  it('ne désigne aucun successeur au dernier membre : le clan sera dissous', () => {
+    expect(successorOf({ ...clan, members: [member('alice', 'leader')] }, 'alice')).toBeNull()
   })
 })

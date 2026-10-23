@@ -417,3 +417,56 @@ describe('API du module Clan - le trésor', () => {
     expect((await me(api)).clan?.treasury).toBe(100)
   })
 })
+
+describe('API du module Clan - les données personnelles', () => {
+  /** Efface le compte d'un joueur. */
+  const erase = (api: TestApi, player: string) =>
+    api.api.request('/api/account', { method: 'DELETE', headers: { 'x-test-user': player } })
+
+  it("exporte l'appartenance, les demandes et les messages du joueur, sans ceux des autres", async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    await found(api, 'Les Ours', 'OURS', 'dave')
+    await join(api, clan.id, 'bob')
+    await api.post('/api/clan/messages', { body: 'Salut le clan' }, 'bob')
+    await api.post('/api/clan/messages', { body: 'Bienvenue Bob' })
+
+    const res = await api.get('/api/account/export', 'bob')
+    const { sections } = (await res.json()) as { sections: { clan: Record<string, unknown> } }
+    expect(sections.clan).toMatchObject({
+      membership: { clan: 'Les Loups', tag: 'LOUP', role: 'member' },
+      messages: [{ body: 'Salut le clan' }],
+      donations: [],
+      distributionsReceived: [],
+    })
+    expect(JSON.stringify(sections.clan)).not.toContain('Bienvenue Bob')
+  })
+
+  it('efface le compte du chef : son rôle passe à son successeur, ses messages disparaissent', async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    await join(api, clan.id, 'bob')
+    await join(api, clan.id, 'carol')
+    await api.post('/api/clan/members/carol/promote', {})
+    await api.post('/api/clan/messages', { body: 'Message d’Alice' })
+    await api.post('/api/clan/messages', { body: 'Message de Bob' }, 'bob')
+
+    expect((await erase(api, 'alice')).status).toBe(200)
+    const view = (await me(api, 'bob')).clan
+    expect(view?.members.map((m) => [m.playerId, m.role])).toEqual([
+      ['bob', 'member'],
+      ['carol', 'leader'],
+    ])
+    const res = await api.get('/api/clan/messages', 'bob')
+    const { messages } = (await res.json()) as { messages: ClanMessage[] }
+    expect(messages.map((m) => m.body)).toEqual(['Message de Bob'])
+  })
+
+  it('efface le compte du dernier membre : le clan est dissous', async () => {
+    const api = await createTestApi()
+    await found(api)
+    await erase(api, 'alice')
+    const res = await api.get('/api/clan/clans', 'bob')
+    expect(((await res.json()) as { clans: ClanSummary[] }).clans).toEqual([])
+  })
+})

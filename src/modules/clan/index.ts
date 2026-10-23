@@ -14,6 +14,7 @@ import { createDrizzleClanRepository } from './infrastructure/drizzle-clan-repos
 import { createDrizzleMessageRepository } from './infrastructure/drizzle-message-repository'
 import { createDrizzleTreasuryRepository } from './infrastructure/drizzle-treasury-repository'
 import { createClanHandlers } from './messages'
+import { createClanPersonalData } from './personal-data'
 
 export interface ClanModuleDeps {
   /** Base de données, dans laquelle le Clan tient ses tables. */
@@ -76,6 +77,7 @@ export function createClanModule({ db, dispatch, clock }: ClanModuleDeps) {
     channelPolicy,
     dailyTask,
     handlers: createClanHandlers(treasury),
+    personalData: createClanPersonalData(db),
   }
 }
 
