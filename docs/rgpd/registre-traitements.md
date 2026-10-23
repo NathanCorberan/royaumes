@@ -5,7 +5,7 @@ réalisés par Royaumes. Il est tenu à jour à chaque évolution du jeu qui ajo
 supprime une donnée personnelle, dans le même commit que cette évolution.
 
 - Responsable du traitement : Nathan Corberan, ADRESSE_DE_CONTACT.
-- Date de dernière mise à jour : 2026-10-21.
+- Date de dernière mise à jour : 2026-10-23.
 
 ## Sous-traitants
 
@@ -25,6 +25,26 @@ supprime une donnée personnelle, dans le même commit que cette évolution.
 | T5 | Présence dans la Taverne | Indiquer les joueurs présents | Identifiant, nom, date du dernier signal | Joueurs | Exécution du contrat | Deux minutes après le dernier signal | `tavern.presence` |
 | T6 | Registre des effacements | Démontrer la réalisation des effacements | Date de l'effacement, nombre d'événements réécrits ; aucune donnée sur le joueur | Aucune personne identifiable | Obligation légale (responsabilité, article 5) | Illimitée | `platform.erasures` |
 | T7 | Journaux techniques | Diagnostiquer les erreurs, assurer la sécurité | Adresse IP, adresses des requêtes, messages d'erreur | Joueurs, visiteurs | Intérêt légitime (sécurité, maintenance) | Durée fixée par l'hébergeur : 1 heure avec l'offre Hobby, 1 jour avec l'offre Pro, 30 jours avec l'option Observability Plus | Vercel |
+| T8 | Appartenance à un clan | Permettre aux joueurs de se regrouper en clans et de les gérer | Identifiant, nom du joueur, rôle dans le clan, date d'arrivée ; demandes d'adhésion et leur date | Joueurs | Exécution du contrat | Appartenance : jusqu'au départ du clan, ou la suppression du compte. Demandes : jusqu'à la réponse, sept jours au plus, ou jusqu'à la suppression du compte | `clan.members`, `clan.requests` |
+| T9 | Chat d'un clan | Permettre aux membres d'un clan de discuter entre eux | Contenu des messages, auteur, date | Membres du clan | Exécution du contrat | Trente jours, ou jusqu'à la suppression du compte | `clan.messages` |
+| T10 | Trésor d'un clan | Permettre les dons d'or au trésor et les distributions du chef | Identifiant du joueur, montant, date et état de chaque don ; identifiant du bénéficiaire, montant et date de chaque distribution | Membres du clan | Exécution du contrat | Jusqu'à la suppression du compte ; un don en attente est conservé le temps que la saga se termine (DT-014) | `clan.donations`, `clan.distributions`, `platform.outbox` |
+
+## Mesures de sécurité des traitements du Clan (T8 à T10)
+
+Ces mesures sont vérifiées par la [revue de sécurité du Clan](../qualite/revue-securite-clan.md).
+
+- Accès réservé aux joueurs connectés : toutes les routes `/api/clan/*` exigent une session (C1).
+- Accès limité au clan du joueur : seuls ses membres lisent son chat, par l'API comme par le
+  canal temps réel `clan-<clan>`, et la gestion des membres est réservée au chef et aux
+  officiers (C2, C3, C4). Un membre exclu peut recevoir le chat jusqu'à la fermeture de son
+  flux, au plus 240 secondes (DT-013).
+- Minimisation : le Clan ne conserve que l'identifiant et le nom affiché du joueur, jamais son
+  adresse électronique ; le canal temps réel ne transmet que les messages du clan concerné.
+- Durées de conservation appliquées à chaque lecture et chaque jour par la tâche
+  `/api/cron/daily` : trente jours pour les messages, sept jours pour les demandes sans réponse.
+- Effacement : la suppression du compte retire l'appartenance, les demandes, les messages, les
+  distributions et les dons réglés du joueur ; un don en attente est conservé le temps que la
+  saga se termine. Le rôle d'un chef effacé passe à son successeur.
 
 ## Droits des personnes
 
