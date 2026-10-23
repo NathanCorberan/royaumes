@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ClanMessage, ClanSummary, ClanView, JoinRequestView } from '@/modules/clan/contracts'
+import { donations } from '@/modules/clan/infrastructure/schema'
+import { REALM_TOPICS, type Stock } from '@/modules/realm/contracts'
+import { enqueue } from '@/platform/outbox/outbox'
 import { createTestApi, TEST_CRON_SECRET } from './testing'
 
 type TestApi = Awaited<ReturnType<typeof createTestApi>>
@@ -283,5 +286,134 @@ describe('API du module Clan - le chat', () => {
     const res = await api.get(`/api/stream/clan-${loups.id}/events?after=0`)
     const { events } = (await res.json()) as { events: { data: ClanMessage }[] }
     expect(events.map((e) => e.data.body)).toEqual(['Message des Loups'])
+  })
+})
+
+describe('API du module Clan - le trésor', () => {
+  /** Distribue la boîte d'envoi, comme la tâche planifiée. */
+  const dispatch = (api: TestApi) =>
+    api.api.request('/api/cron/daily', {
+      headers: { authorization: `Bearer ${TEST_CRON_SECRET}` },
+    })
+
+  /** Or du village d'un joueur. */
+  async function goldOf(api: TestApi, player: string) {
+    const res = await api.get('/api/realm/village', player)
+    return ((await res.json()) as { view: { stock: Stock } }).view.stock.gold
+  }
+
+  /** Fonde le village d'un joueur, puis lui verse de l'or par un message adressé au Village. */
+  async function villageWithGold(api: TestApi, player: string, gold: number) {
+    await api.post('/api/realm/village', { name: `Village de ${player}` }, player)
+    await enqueue(api.db, [
+      {
+        topic: REALM_TOPICS.deposit,
+        payload: { transferId: `cadeau-${player}`, playerId: player, resources: { gold } },
+      },
+    ])
+    await dispatch(api)
+  }
+
+  /** Clan d'Alice, avec Bob ; chacun dispose de 500 or dans son village. */
+  async function clanWithGold() {
+    const api = await createTestApi()
+    await villageWithGold(api, 'alice', 500)
+    await villageWithGold(api, 'bob', 500)
+    const clan = await found(api)
+    await join(api, clan.id, 'bob')
+    return { api, clan }
+  }
+
+  const donate = (api: TestApi, amount: number, player = 'alice') =>
+    api.post('/api/clan/treasury/donations', { amount }, player)
+
+  it("prélève l'or du don dans le village, puis le crédite au trésor (201)", async () => {
+    const { api } = await clanWithGold()
+    const res = await donate(api, 200, 'bob')
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as { donation: { status: string } }).donation.status).toBe(
+      'credited',
+    )
+    expect(await goldOf(api, 'bob')).toBe(300)
+    expect((await me(api)).clan?.treasury).toBe(200)
+  })
+
+  it("annule le don si le village n'a pas assez d'or, sans rien créditer", async () => {
+    const { api } = await clanWithGold()
+    const res = await donate(api, 800)
+    expect(((await res.json()) as { donation: { status: string } }).donation.status).toBe('refused')
+    expect(await goldOf(api, 'alice')).toBe(500)
+    expect((await me(api)).clan?.treasury).toBe(0)
+  })
+
+  it('refuse un montant invalide (422), une entrée mal formée (400) et un joueur sans clan (404)', async () => {
+    const { api } = await clanWithGold()
+    expect((await donate(api, 0)).status).toBe(422)
+    expect((await donate(api, 1.5)).status).toBe(422)
+    expect((await api.post('/api/clan/treasury/donations', { amount: '10' })).status).toBe(400)
+    expect((await donate(api, 10, 'zoe')).status).toBe(404)
+  })
+
+  it("reverse l'or au donateur si le clan a été dissous pendant le prélèvement", async () => {
+    const api = await createTestApi()
+    await villageWithGold(api, 'alice', 500)
+    // Don en attente pour un clan dissous depuis : le Village répond que l'or a été prélevé.
+    await api.db.insert(donations).values({
+      id: 'don-1',
+      clanId: 'clan-dissous',
+      playerId: 'alice',
+      amount: 100,
+      status: 'pending',
+      donatedAt: 0,
+    })
+    const reply = { transferId: 'don-1', outcome: 'withdrawn' }
+    await enqueue(api.db, [{ topic: 'clan.transferResult', payload: reply }])
+    await dispatch(api)
+    expect(await goldOf(api, 'alice')).toBe(600)
+    const [row] = await api.db.select().from(donations)
+    expect(row.status).toBe('refunded')
+  })
+
+  it('ne crédite un don qu’une seule fois, même si la réponse du Village est remise deux fois', async () => {
+    const { api, clan } = await clanWithGold()
+    await api.db.insert(donations).values({
+      id: 'don-1',
+      clanId: clan.id,
+      playerId: 'alice',
+      amount: 100,
+      status: 'pending',
+      donatedAt: 0,
+    })
+    const reply = { transferId: 'don-1', outcome: 'withdrawn' }
+    await enqueue(api.db, [
+      { topic: 'clan.transferResult', payload: reply },
+      { topic: 'clan.transferResult', payload: reply },
+    ])
+    await dispatch(api)
+    expect((await me(api)).clan?.treasury).toBe(100)
+  })
+
+  it("le chef distribue de l'or du trésor à un membre, qui le reçoit dans son village (201)", async () => {
+    const { api } = await clanWithGold()
+    await donate(api, 300)
+    const res = await api.post('/api/clan/treasury/distributions', { playerId: 'bob', amount: 120 })
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as { clan: ClanView }).clan.treasury).toBe(180)
+    expect(await goldOf(api, 'bob')).toBe(620)
+  })
+
+  it('refuse une distribution au-delà du trésor (409), par un simple membre (403) ou à un inconnu (404)', async () => {
+    const { api } = await clanWithGold()
+    await donate(api, 100)
+    const distribute = (playerId: string, amount: number, player = 'alice') =>
+      api.post('/api/clan/treasury/distributions', { playerId, amount }, player)
+    const tooMuch = await distribute('bob', 101)
+    expect(tooMuch.status).toBe(409)
+    expect(await tooMuch.json()).toEqual({
+      error: { code: 'INSUFFICIENT_TREASURY', available: 100 },
+    })
+    expect((await distribute('alice', 10, 'bob')).status).toBe(403)
+    expect((await distribute('zoe', 10)).status).toBe(404)
+    expect((await me(api)).clan?.treasury).toBe(100)
   })
 })

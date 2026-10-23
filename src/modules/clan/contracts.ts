@@ -6,11 +6,14 @@
 import { z } from 'zod'
 import { MESSAGE_MAX_LENGTH } from './domain/chat'
 import type { Member, Role } from './domain/clan'
+import type { DonationStatus } from './domain/treasury'
 
 export type { ChatError } from './domain/chat'
 export { MESSAGE_MAX_LENGTH } from './domain/chat'
 export type { ClanError, Member, Role } from './domain/clan'
 export { MAX_MEMBERS, NAME_LENGTH, REQUEST_TTL_MS, ROLES } from './domain/clan'
+export type { DonationStatus, TreasuryError } from './domain/treasury'
+export { MAX_AMOUNT } from './domain/treasury'
 
 /** Clan du joueur connecté, tel que le reçoit l'interface. */
 export interface ClanView {
@@ -71,3 +74,31 @@ export const clanChannel = (clanId: string) => `${CLAN_CHANNEL_PREFIX}${clanId}`
 
 /** Type sous lequel un nouveau message est annoncé sur le canal d'un clan. */
 export const CLAN_MESSAGE_POSTED = 'ClanMessagePosted'
+
+// ---------------------------------------------------------------------------
+// Le trésor : les dons et les distributions passent par des messages au Village
+// ---------------------------------------------------------------------------
+
+/** Sujets des messages que le Clan sait traiter. */
+export const CLAN_TOPICS = {
+  /** Réponse du Village au prélèvement de l'or d'un don. */
+  transferResult: 'clan.transferResult',
+} as const
+
+/** Don d'un membre au trésor, tel que le reçoit le donateur. */
+export interface DonationView {
+  id: string
+  amount: number
+  status: DonationStatus
+}
+
+/** Corps attendu pour donner de l'or au trésor. Le montant exact est vérifié par le domaine. */
+export const DonateInput = z.object({
+  amount: z.number(),
+})
+
+/** Corps attendu pour distribuer de l'or du trésor à un membre du clan. */
+export const DistributeInput = z.object({
+  playerId: z.string().min(1),
+  amount: z.number(),
+})

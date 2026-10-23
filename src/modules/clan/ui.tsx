@@ -6,16 +6,17 @@ import { Entity } from '@/ui/entity'
 import type { ClanApi } from './api'
 import {
   type ChatError,
-  type ClanError,
   type ClanMessage,
   type ClanSummary,
   type ClanView,
   clanChannel,
+  type DonationView,
   type JoinRequestView,
   MAX_MEMBERS,
   MESSAGE_MAX_LENGTH,
   NAME_LENGTH,
   type Role,
+  type TreasuryError,
 } from './contracts'
 
 /** Client HTTP typé, déduit de la sous-application Hono du module. */
@@ -29,8 +30,12 @@ const ROLE_LABELS: Record<Role, string> = {
 }
 
 /** Message affiché au joueur pour chaque erreur. */
-function errorText(error: ClanError | ChatError | { code: 'INVALID_INPUT' }): string {
+function errorText(error: TreasuryError | ChatError | { code: 'INVALID_INPUT' }): string {
   switch (error.code) {
+    case 'INVALID_AMOUNT':
+      return `Le montant doit être un nombre entier d'or, entre 1 et ${error.max}.`
+    case 'INSUFFICIENT_TREASURY':
+      return `Le trésor ne contient que ${error.available} or.`
     case 'EMPTY_MESSAGE':
       return 'Le message est vide.'
     case 'MESSAGE_TOO_LONG':
@@ -108,7 +113,7 @@ export function ClanScreen() {
   async function run(command: () => Promise<Response>) {
     const res = await command()
     const body = res.status === 204 ? {} : await res.json()
-    setError('error' in body ? errorText(body.error as ClanError) : null)
+    setError('error' in body ? errorText(body.error as TreasuryError) : null)
     await refresh()
   }
 
@@ -127,6 +132,7 @@ export function ClanScreen() {
       {clan ? (
         <>
           <ClanPanel clan={clan} pending={pending} run={run} />
+          <Treasury clan={clan} run={run} />
           <ClanChat clanId={clan.id} />
         </>
       ) : (
@@ -137,6 +143,85 @@ export function ClanScreen() {
 }
 
 type Run = (command: () => Promise<Response>) => Promise<void>
+
+/** Message affiché au donateur pour chaque état de son don. */
+const DONATION_LABELS: Record<DonationView['status'], string> = {
+  pending: 'Don en cours de prélèvement dans votre village...',
+  credited: 'Don crédité au trésor du clan.',
+  refused: "Don refusé : votre village n'a pas assez d'or.",
+  refunded: 'Le clan a été dissous : votre or vous a été rendu.',
+}
+
+/** Trésor du clan : les dons de tous les membres, et les distributions du chef. */
+function Treasury({ clan, run }: { clan: ClanView; run: Run }) {
+  const [gift, setGift] = useState('')
+  const [share, setShare] = useState('')
+  const [target, setTarget] = useState('')
+  const [donation, setDonation] = useState<DonationView | null>(null)
+  const others = clan.members.filter((member) => member.role !== 'leader')
+
+  function donate(event: FormEvent) {
+    event.preventDefault()
+    run(async () => {
+      const res = await client.treasury.donations.$post({ json: { amount: Number(gift) } })
+      // La réponse est lue ici pour l'état du don, et de nouveau par run pour l'erreur éventuelle.
+      const body = (await res.clone().json()) as { donation?: DonationView }
+      setDonation(body.donation ?? null)
+      if (body.donation) setGift('')
+      return res
+    })
+  }
+
+  function distribute(event: FormEvent) {
+    event.preventDefault()
+    const playerId = target || others[0]?.playerId || ''
+    run(() => client.treasury.distributions.$post({ json: { playerId, amount: Number(share) } }))
+  }
+
+  return (
+    <section className="panel" aria-label="Trésor du clan">
+      <h2>
+        Trésor : {clan.treasury} <Entity kind="gold" />
+      </h2>
+      <form className="row" onSubmit={donate}>
+        <input
+          aria-label="Or à donner"
+          type="number"
+          min={1}
+          placeholder="Or à donner"
+          value={gift}
+          onChange={(e) => setGift(e.target.value)}
+        />
+        <button type="submit">Donner</button>
+      </form>
+      {donation && <p className="muted">{DONATION_LABELS[donation.status]}</p>}
+      {clan.myRole === 'leader' && others.length > 0 && (
+        <form className="row" onSubmit={distribute}>
+          <select
+            aria-label="Membre"
+            value={target || others[0].playerId}
+            onChange={(e) => setTarget(e.target.value)}
+          >
+            {others.map((member) => (
+              <option key={member.playerId} value={member.playerId}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+          <input
+            aria-label="Or à distribuer"
+            type="number"
+            min={1}
+            placeholder="Or à distribuer"
+            value={share}
+            onChange={(e) => setShare(e.target.value)}
+          />
+          <button type="submit">Distribuer</button>
+        </form>
+      )}
+    </section>
+  )
+}
 
 /** Le clan du joueur : ses membres, les demandes reçues, et les actions permises par son rôle. */
 function ClanPanel({

@@ -3,10 +3,18 @@ import type { AppEnv } from '@/platform/http/types'
 import { validateJson } from '@/platform/http/validate'
 import type { ChatService } from './application/chat-service'
 import type { ClanService } from './application/clan-service'
-import { type ChatError, type ClanError, FoundClanInput, PostMessageInput } from './contracts'
+import type { TreasuryService } from './application/treasury-service'
+import {
+  type ChatError,
+  DistributeInput,
+  DonateInput,
+  FoundClanInput,
+  PostMessageInput,
+  type TreasuryError,
+} from './contracts'
 
 /** Code HTTP associé à chaque erreur métier. */
-const STATUS: Record<ClanError['code'] | ChatError['code'], 403 | 404 | 409 | 422 | 429> = {
+const STATUS: Record<TreasuryError['code'] | ChatError['code'], 403 | 404 | 409 | 422 | 429> = {
   INVALID_NAME: 422,
   INVALID_TAG: 422,
   NAME_TAKEN: 409,
@@ -24,6 +32,8 @@ const STATUS: Record<ClanError['code'] | ChatError['code'], 403 | 404 | 409 | 42
   EMPTY_MESSAGE: 422,
   MESSAGE_TOO_LONG: 422,
   TOO_MANY_MESSAGES: 429,
+  INVALID_AMOUNT: 422,
+  INSUFFICIENT_TREASURY: 409,
 }
 
 /**
@@ -31,7 +41,7 @@ const STATUS: Record<ClanError['code'] | ChatError['code'], 403 | 404 | 409 | 42
  * Le joueur qui agit est toujours celui que l'authentification a identifié : les identifiants
  * présents dans les adresses désignent un clan, une demande ou un autre membre, jamais l'auteur.
  */
-export function createClanApi(service: ClanService, chat: ChatService) {
+export function createClanApi(service: ClanService, chat: ChatService, treasury: TreasuryService) {
   return (
     new Hono<AppEnv>()
       // Clan du joueur, et ses demandes en cours s'il n'en a pas.
@@ -126,6 +136,22 @@ export function createClanApi(service: ClanService, chat: ChatService) {
           c.header('Retry-After', String(Math.ceil(result.error.retryAfterMs / 1000)))
         }
         return c.json({ error: result.error }, STATUS[result.error.code])
+      })
+
+      // Trésor du clan : un don de l'or du village du joueur, ou une distribution par le chef.
+      .post('/treasury/donations', validateJson(DonateInput), async (c) => {
+        const result = await treasury.donate(c.var.userId, c.req.valid('json').amount)
+        return result.ok
+          ? c.json({ donation: result.donation }, 201)
+          : c.json({ error: result.error }, STATUS[result.error.code])
+      })
+
+      .post('/treasury/distributions', validateJson(DistributeInput), async (c) => {
+        const { playerId, amount } = c.req.valid('json')
+        const result = await treasury.distribute(c.var.userId, playerId, amount)
+        return result.ok
+          ? c.json({ clan: result.clan }, 201)
+          : c.json({ error: result.error }, STATUS[result.error.code])
       })
 
       // Départ du joueur.

@@ -87,7 +87,8 @@ export function createApi({
   })
 
   const tavern = createTavernModule({ db, clock })
-  const clan = createClanModule({ db, clock })
+  // Comme le Marché, le Clan déclenche la distribution après les dons et les distributions.
+  const clan = createClanModule({ db, dispatch: () => dispatcher.dispatch(), clock })
 
   // Droits des joueurs : chaque module fournit ses données personnelles. L'identité vient
   // en dernier : tant qu'elle n'est pas effacée, le joueur peut relancer un effacement interrompu.
@@ -107,6 +108,7 @@ export function createApi({
   // Gestionnaires de messages, déclarés par les modules et confiés au distributeur.
   dispatcher.register(realm.handlers)
   dispatcher.register(market.handlers)
+  dispatcher.register(clan.handlers)
 
   // Règles d'accès aux canaux temps réel, déclarées par les modules.
   const policies: ChannelPolicy[] = [
