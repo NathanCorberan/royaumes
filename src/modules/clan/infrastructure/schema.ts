@@ -80,6 +80,8 @@ export const messages = clan.table(
 /**
  * Dons au trésor, et avancement de leur saga avec le Village. Un don ne référence pas son clan
  * par une clé étrangère : il survit à la dissolution du clan, le temps d'être remboursé.
+ * DETTE TECHNIQUE (docs/qualite/dette-technique.md, DT-014) : les dons et les distributions
+ * n'ont pas de durée de conservation ; ils ne sont supprimés qu'avec le compte du joueur.
  */
 export const donations = clan.table(
   'donations',

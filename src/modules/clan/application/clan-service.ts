@@ -11,6 +11,7 @@ import {
   checkSetRole,
   checkTransferLeadership,
   founder,
+  MAX_MEMBERS,
   memberOf,
   REQUEST_TTL_MS,
 } from '../domain/clan'
@@ -160,7 +161,9 @@ export function createClanService(
       now: clock(),
     })
     if (!checked.ok) return checked
-    if (!(await repo.addMember(clan.id, checked.value))) return fail({ code: 'ALREADY_IN_CLAN' })
+    const added = await repo.addMember(clan.id, checked.value, MAX_MEMBERS)
+    if (added === 'in-clan') return fail({ code: 'ALREADY_IN_CLAN' })
+    if (added === 'full') return fail({ code: 'CLAN_FULL', max: MAX_MEMBERS })
     // Le nouveau membre n'a plus besoin de ses autres demandes.
     await repo.removeRequestsOf(request.playerId)
     return {

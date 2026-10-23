@@ -44,6 +44,8 @@ export function createClanModule({ db, dispatch, clock }: ClanModuleDeps) {
   // Canal du chat d'un clan : seuls ses membres peuvent l'écouter, et un joueur exclu ou parti
   // perd l'accès dès sa prochaine connexion. Comme celui de la Taverne, le canal ne lit pas le
   // journal, mais la table des messages, filtrée sur le clan désigné par le nom du canal.
+  // DETTE TECHNIQUE (docs/qualite/dette-technique.md, DT-013) : l'appartenance n'est vérifiée
+  // qu'à l'ouverture du flux ; un membre exclu reçoit les messages jusqu'à sa fermeture.
   const channelPolicy: ChannelPolicy = {
     prefix: CLAN_CHANNEL_PREFIX,
     canSubscribe: (channel, userId) =>

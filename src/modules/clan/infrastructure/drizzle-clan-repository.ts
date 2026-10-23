@@ -83,13 +83,23 @@ export function createDrizzleClanRepository(db: Db): ClanRepository {
         })
     },
 
-    async addMember(clanId, member) {
-      const joined = await db
-        .insert(members)
-        .values(toRow(clanId, member))
-        .onConflictDoNothing()
-        .returning()
-      return joined.length > 0
+    async addMember(clanId, member, max) {
+      return db.transaction(async (tx) => {
+        // Le clan est verrouillé jusqu'à la fin de la transaction : une acceptation simultanée
+        // attend celle-ci, et compte donc le membre qu'elle vient d'ajouter.
+        await tx.select({ id: clans.id }).from(clans).where(eq(clans.id, clanId)).for('update')
+        const [{ total }] = await tx
+          .select({ total: count() })
+          .from(members)
+          .where(eq(members.clanId, clanId))
+        if (total >= max) return 'full'
+        const joined = await tx
+          .insert(members)
+          .values(toRow(clanId, member))
+          .onConflictDoNothing()
+          .returning()
+        return joined.length > 0 ? 'added' : 'in-clan'
+      })
     },
 
     async setRoles(changed) {

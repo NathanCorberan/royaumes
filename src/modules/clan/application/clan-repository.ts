@@ -22,8 +22,11 @@ export interface ClanRepository {
     clan: { id: string; name: string; tag: string; foundedAt: number },
     leader: Member,
   ): Promise<boolean>
-  /** Inscrit un membre ; renvoie faux si le joueur a rejoint un autre clan entre-temps. */
-  addMember(clanId: string, member: Member): Promise<boolean>
+  /**
+   * Inscrit un membre, sans jamais dépasser max membres, même lors d'acceptations simultanées.
+   * Renvoie 'in-clan' si le joueur a rejoint un autre clan entre-temps, 'full' si le clan est complet.
+   */
+  addMember(clanId: string, member: Member, max: number): Promise<'added' | 'in-clan' | 'full'>
   /** Modifie le rôle d'un ou de plusieurs membres, en une seule transaction. */
   setRoles(members: Member[]): Promise<void>
   /** Retire un membre de son clan. */
