@@ -4,8 +4,11 @@
  * validation et des constantes, sans aucun code propre au serveur.
  */
 import { z } from 'zod'
+import { MESSAGE_MAX_LENGTH } from './domain/chat'
 import type { Member, Role } from './domain/clan'
 
+export type { ChatError } from './domain/chat'
+export { MESSAGE_MAX_LENGTH } from './domain/chat'
 export type { ClanError, Member, Role } from './domain/clan'
 export { MAX_MEMBERS, NAME_LENGTH, REQUEST_TTL_MS, ROLES } from './domain/clan'
 
@@ -43,3 +46,28 @@ export const FoundClanInput = z.object({
   name: z.string().max(100),
   tag: z.string().max(10),
 })
+
+/** Message du chat d'un clan, tel que le reçoivent ses membres. */
+export interface ClanMessage {
+  /** Identifiant croissant : il ordonne les messages, et sert de position au canal temps réel. */
+  id: number
+  clanId: string
+  authorId: string
+  authorName: string
+  body: string
+  postedAt: number
+}
+
+/** Corps attendu pour publier un message. La longueur exacte est vérifiée par le domaine. */
+export const PostMessageInput = z.object({
+  body: z.string().max(MESSAGE_MAX_LENGTH * 4),
+})
+
+/** Préfixe commun aux noms des canaux temps réel des clans. */
+export const CLAN_CHANNEL_PREFIX = 'clan-'
+
+/** Nom du canal temps réel du chat d'un clan, réservé à ses membres. */
+export const clanChannel = (clanId: string) => `${CLAN_CHANNEL_PREFIX}${clanId}`
+
+/** Type sous lequel un nouveau message est annoncé sur le canal d'un clan. */
+export const CLAN_MESSAGE_POSTED = 'ClanMessagePosted'

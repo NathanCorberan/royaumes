@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ClanSummary, ClanView, JoinRequestView } from '@/modules/clan/contracts'
-import { createTestApi } from './testing'
+import type { ClanMessage, ClanSummary, ClanView, JoinRequestView } from '@/modules/clan/contracts'
+import { createTestApi, TEST_CRON_SECRET } from './testing'
 
 type TestApi = Awaited<ReturnType<typeof createTestApi>>
 
@@ -178,5 +178,110 @@ describe('API du module Clan', () => {
     const res = await api.get('/api/clan/clans')
     expect(((await res.json()) as { clans: ClanSummary[] }).clans).toEqual([])
     expect((await api.post('/api/clan/leave', {})).status).toBe(404)
+  })
+})
+
+describe('API du module Clan - le chat', () => {
+  /** Publie un message dans le chat du clan d'un joueur, Alice par défaut. */
+  const say = (api: TestApi, body: string, player = 'alice') =>
+    api.post('/api/clan/messages', { body }, player)
+
+  /** Messages du chat, tels que l'API les renvoie à un joueur. */
+  async function history(api: TestApi, player = 'alice') {
+    const res = await api.get('/api/clan/messages', player)
+    return ((await res.json()) as { messages: ClanMessage[] }).messages
+  }
+
+  it('publie les messages au nom du membre connecté, et les présente dans l’ordre', async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    await join(api, clan.id, 'bob')
+    expect((await say(api, 'Bienvenue Bob')).status).toBe(201)
+    await say(api, 'Merci !', 'bob')
+    expect((await history(api, 'bob')).map((m) => [m.authorName, m.body])).toEqual([
+      ['alice', 'Bienvenue Bob'],
+      ['bob', 'Merci !'],
+    ])
+  })
+
+  it("réserve le chat aux membres : un joueur sans clan ne lit ni n'écrit (404)", async () => {
+    const api = await createTestApi()
+    await found(api)
+    expect((await api.get('/api/clan/messages', 'zoe')).status).toBe(404)
+    expect((await say(api, 'Bonjour ?', 'zoe')).status).toBe(404)
+  })
+
+  it("sépare les chats des clans : un membre ne lit pas le chat d'un autre clan", async () => {
+    const api = await createTestApi()
+    await found(api)
+    await found(api, 'Les Ours', 'OURS', 'bob')
+    await say(api, 'Message des Loups')
+    expect(await history(api, 'bob')).toEqual([])
+  })
+
+  it('refuse un message vide ou trop long (422)', async () => {
+    const api = await createTestApi()
+    await found(api)
+    expect((await say(api, '   ')).status).toBe(422)
+    expect((await say(api, 'a'.repeat(281))).status).toBe(422)
+    expect(await history(api)).toEqual([])
+  })
+
+  it('limite le nombre de messages par membre (429)', async () => {
+    const api = await createTestApi()
+    await found(api)
+    for (let i = 1; i <= 5; i++) expect((await say(api, `Message ${i}`)).status).toBe(201)
+    const refused = await say(api, 'Message 6')
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('retry-after')).toBe('30')
+  })
+
+  it('supprime les messages au bout de 30 jours, à la lecture comme par la tâche quotidienne', async () => {
+    const api = await createTestApi()
+    await found(api)
+    await say(api, 'Ancien message')
+    api.advance(30 * 24 * 60 + 1)
+    expect(await history(api)).toEqual([])
+
+    await say(api, 'Autre message')
+    api.advance(30 * 24 * 60 + 1)
+    const res = await api.api.request('/api/cron/daily', {
+      headers: { authorization: `Bearer ${TEST_CRON_SECRET}` },
+    })
+    expect(((await res.json()) as { clan: unknown }).clan).toEqual({
+      ok: true,
+      result: { messages: 1, requests: 0 },
+    })
+  })
+
+  it('diffuse les messages sur le canal du clan, réservé à ses membres (403)', async () => {
+    const api = await createTestApi()
+    const clan = await found(api)
+    await join(api, clan.id, 'bob')
+    await say(api, 'Premier')
+    await say(api, 'Second', 'bob')
+
+    const res = await api.get(`/api/stream/clan-${clan.id}/events?after=1`, 'bob')
+    const { events } = (await res.json()) as {
+      events: { position: number; type: string; data: ClanMessage }[]
+    }
+    expect(events).toMatchObject([
+      { position: 2, type: 'ClanMessagePosted', data: { authorName: 'bob', body: 'Second' } },
+    ])
+    expect((await api.get(`/api/stream/clan-${clan.id}/events`, 'zoe')).status).toBe(403)
+    // Un membre exclu perd aussitôt l'accès au canal.
+    await api.post('/api/clan/members/bob/kick', {})
+    expect((await api.get(`/api/stream/clan-${clan.id}/events`, 'bob')).status).toBe(403)
+  })
+
+  it("ne diffuse sur le canal d'un clan que ses propres messages", async () => {
+    const api = await createTestApi()
+    const loups = await found(api)
+    await found(api, 'Les Ours', 'OURS', 'bob')
+    await say(api, 'Message des Ours', 'bob')
+    await say(api, 'Message des Loups')
+    const res = await api.get(`/api/stream/clan-${loups.id}/events?after=0`)
+    const { events } = (await res.json()) as { events: { data: ClanMessage }[] }
+    expect(events.map((e) => e.data.body)).toEqual(['Message des Loups'])
   })
 })

@@ -1,14 +1,19 @@
 'use client'
 import { hc } from 'hono/client'
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { useChannel } from '@/platform/realtime/use-channel'
 import { Entity } from '@/ui/entity'
 import type { ClanApi } from './api'
 import {
+  type ChatError,
   type ClanError,
+  type ClanMessage,
   type ClanSummary,
   type ClanView,
+  clanChannel,
   type JoinRequestView,
   MAX_MEMBERS,
+  MESSAGE_MAX_LENGTH,
   NAME_LENGTH,
   type Role,
 } from './contracts'
@@ -24,8 +29,14 @@ const ROLE_LABELS: Record<Role, string> = {
 }
 
 /** Message affiché au joueur pour chaque erreur. */
-function errorText(error: ClanError | { code: 'INVALID_INPUT' }): string {
+function errorText(error: ClanError | ChatError | { code: 'INVALID_INPUT' }): string {
   switch (error.code) {
+    case 'EMPTY_MESSAGE':
+      return 'Le message est vide.'
+    case 'MESSAGE_TOO_LONG':
+      return `Le message dépasse ${error.max} caractères.`
+    case 'TOO_MANY_MESSAGES':
+      return `Trop de messages : patientez ${Math.ceil(error.retryAfterMs / 1000)} secondes.`
     case 'INVALID_NAME':
       return `Le nom doit comporter de ${error.min} à ${error.max} caractères.`
     case 'INVALID_TAG':
@@ -114,7 +125,10 @@ export function ClanScreen() {
         </p>
       )}
       {clan ? (
-        <ClanPanel clan={clan} pending={pending} run={run} />
+        <>
+          <ClanPanel clan={clan} pending={pending} run={run} />
+          <ClanChat clanId={clan.id} />
+        </>
       ) : (
         <NoClan clans={clans} mine={mine} run={run} />
       )}
@@ -310,5 +324,97 @@ function NoClan({ clans, mine, run }: { clans: ClanSummary[]; mine: JoinRequestV
         </ul>
       </section>
     </>
+  )
+}
+
+/** Libellé affiché pour chaque état de la connexion temps réel. */
+const STATUS_LABELS = {
+  connecting: 'Connexion...',
+  open: 'Temps réel connecté',
+  reconnecting: 'Reconnexion...',
+} as const
+
+/** Ajoute des messages à la liste, sans doublon, dans l'ordre de leurs identifiants. */
+function merge(current: ClanMessage[], added: ClanMessage[]): ClanMessage[] {
+  const byId = new Map(current.map((message) => [message.id, message]))
+  for (const message of added) byId.set(message.id, message)
+  return [...byId.values()].sort((a, b) => a.id - b.id)
+}
+
+/** Heure d'un message, au format local. */
+const timeOf = (at: number) =>
+  new Date(at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+/** Chat du clan, réservé à ses membres, reçu en temps réel. */
+function ClanChat({ clanId }: { clanId: string }) {
+  const [messages, setMessages] = useState<ClanMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  // REQUÊTE : les derniers messages du clan.
+  const refresh = useCallback(async () => {
+    const res = await client.messages.$get()
+    const body = await res.json()
+    if ('messages' in body) setMessages((current) => merge(current, body.messages))
+  }, [])
+
+  // TEMPS RÉEL : chaque nouveau message du clan est reçu avec son contenu.
+  const status = useChannel(clanChannel(clanId), (event) => {
+    setMessages((current) => merge(current, [event.data as unknown as ClanMessage]))
+  })
+
+  // À chaque ouverture du canal, y compris après une reconnexion, l'historique est relu.
+  useEffect(() => {
+    if (status === 'open') refresh()
+  }, [status, refresh])
+
+  // COMMANDE : publication d'un message.
+  async function send(event: FormEvent) {
+    event.preventDefault()
+    const res = await client.messages.$post({ json: { body: draft } })
+    const body = await res.json()
+    if ('error' in body) {
+      setError(errorText(body.error as ChatError))
+    } else {
+      setError(null)
+      setDraft('')
+      setMessages((current) => merge(current, [body.message]))
+    }
+  }
+
+  return (
+    <section className="panel" aria-label="Chat du clan">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>Chat du clan</h2>
+        <span className="status" data-status={status}>
+          {STATUS_LABELS[status]}
+        </span>
+      </div>
+      {messages.length === 0 && <p className="muted">Aucun message pour le moment.</p>}
+      <ul className="messages">
+        {messages.map((message) => (
+          <li key={message.id}>
+            <span className="muted">{timeOf(message.postedAt)}</span>{' '}
+            <strong>{message.authorName}</strong> {message.body}
+          </li>
+        ))}
+      </ul>
+      <form className="row" onSubmit={send}>
+        <input
+          aria-label="Votre message"
+          value={draft}
+          maxLength={MESSAGE_MAX_LENGTH * 2}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Votre message"
+          style={{ flex: 1 }}
+        />
+        <button type="submit">Envoyer</button>
+      </form>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   )
 }

@@ -3,13 +3,14 @@ import type { StoredEvent } from '../event-store/event-store'
 /**
  * Source d'un canal qui ne lit pas le journal, fournie par le module qui le déclare.
  * Ses éléments sont présentés sous la forme d'événements, identifiés par leur position,
- * afin que l'interface les reçoive comme ceux des autres canaux.
+ * afin que l'interface les reçoive comme ceux des autres canaux. Le nom du canal est fourni :
+ * une même source peut alimenter plusieurs canaux, par exemple un canal par clan.
  */
 export interface ChannelSource {
-  /** Éléments postérieurs à une position, dans l'ordre croissant des positions. */
-  read(after: number): Promise<StoredEvent[]>
+  /** Éléments du canal postérieurs à une position, dans l'ordre croissant des positions. */
+  read(after: number, channel: string): Promise<StoredEvent[]>
   /** Position de départ d'un abonné qui n'en fournit aucune. */
-  start(): Promise<number>
+  start(channel: string): Promise<number>
 }
 
 /**

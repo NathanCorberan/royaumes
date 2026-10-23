@@ -228,6 +228,7 @@ export function createClanService(
   }
 
   return {
+    purgeRequests,
     me,
     list: () => repo.list(),
     found,

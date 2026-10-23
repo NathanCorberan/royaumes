@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '@/platform/http/types'
 import { validateJson } from '@/platform/http/validate'
+import type { ChatService } from './application/chat-service'
 import type { ClanService } from './application/clan-service'
-import { type ClanError, FoundClanInput } from './contracts'
+import { type ChatError, type ClanError, FoundClanInput, PostMessageInput } from './contracts'
 
 /** Code HTTP associé à chaque erreur métier. */
-const STATUS: Record<ClanError['code'], 403 | 404 | 409 | 422> = {
+const STATUS: Record<ClanError['code'] | ChatError['code'], 403 | 404 | 409 | 422 | 429> = {
   INVALID_NAME: 422,
   INVALID_TAG: 422,
   NAME_TAKEN: 409,
@@ -20,6 +21,9 @@ const STATUS: Record<ClanError['code'], 403 | 404 | 409 | 422> = {
   LEADER_MUST_TRANSFER: 409,
   CLAN_NOT_FOUND: 404,
   REQUEST_NOT_FOUND: 404,
+  EMPTY_MESSAGE: 422,
+  MESSAGE_TOO_LONG: 422,
+  TOO_MANY_MESSAGES: 429,
 }
 
 /**
@@ -27,7 +31,7 @@ const STATUS: Record<ClanError['code'], 403 | 404 | 409 | 422> = {
  * Le joueur qui agit est toujours celui que l'authentification a identifié : les identifiants
  * présents dans les adresses désignent un clan, une demande ou un autre membre, jamais l'auteur.
  */
-export function createClanApi(service: ClanService) {
+export function createClanApi(service: ClanService, chat: ChatService) {
   return (
     new Hono<AppEnv>()
       // Clan du joueur, et ses demandes en cours s'il n'en a pas.
@@ -103,6 +107,25 @@ export function createClanApi(service: ClanService) {
         return result.ok
           ? c.json({ clan: result.clan })
           : c.json({ error: result.error }, STATUS[result.error.code])
+      })
+
+      // Chat du clan, réservé à ses membres.
+      .get('/messages', async (c) => {
+        const result = await chat.latest(c.var.userId)
+        return result.ok
+          ? c.json({ messages: result.messages })
+          : c.json({ error: result.error }, STATUS[result.error.code])
+      })
+
+      .post('/messages', validateJson(PostMessageInput), async (c) => {
+        const player = { id: c.var.userId, name: c.var.userName }
+        const result = await chat.post(player, c.req.valid('json').body)
+        if (result.ok) return c.json({ message: result.message }, 201)
+        // En cas de limitation, l'en-tête Retry-After indique le délai à attendre, en secondes.
+        if (result.error.code === 'TOO_MANY_MESSAGES') {
+          c.header('Retry-After', String(Math.ceil(result.error.retryAfterMs / 1000)))
+        }
+        return c.json({ error: result.error }, STATUS[result.error.code])
       })
 
       // Départ du joueur.
